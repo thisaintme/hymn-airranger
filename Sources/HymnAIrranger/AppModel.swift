@@ -18,9 +18,8 @@ enum AppSheet: String, Identifiable { case importSong, melody, lyrics, choir, so
     @Published var errorMessage = ""
     @Published var status = "Ready"
     @Published var busy = false
-    @Published var pending: Score?
-    @Published var pendingRequest = ""
-    @Published var showBefore = false
+    @Published private(set) var arrangementProgress: ArrangementProgress?
+    @Published var previousArrangementID: UUID?
     @Published var inspectorVisible = true
     @Published var selectedNote: RenderEvent?
     @Published var exportVoice: Voice?
@@ -36,24 +35,29 @@ enum AppSheet: String, Identifiable { case importSong, melody, lyrics, choir, so
     let player = PracticePlayer()
     let scoreView = ScoreController()
     private let folder: URL
-    private var operation: Task<Void,Never>?
+    private(set) var operation: Task<Void,Never>?
+    private var arrangementToken: UUID?
+    private let services: AppServices
+    private let defaults: UserDefaults
     var score: Score { project.current.score }
-    var displayedScore: Score { showBefore ? score : (pending ?? score) }
+    var displayedScore: Score { score }
     var issues: [ScoreIssue] { Validator.inspect(displayedScore) }
     var isApproved: Bool { project.approvedID == project.currentID }
     var stamp: String {
-        let state = pending != nil && !showBefore ? "PROPOSAL" : (isApproved ? "APPROVED" : "DRAFT")
+        let state = isApproved ? "APPROVED" : "DRAFT"
         return "\(state) · \(project.current.label) · \(project.currentID.uuidString.prefix(8))"
     }
-    init() {
-        cloudEnabled = UserDefaults.standard.bool(forKey:"cloudEnabled")
-        modelID = UserDefaults.standard.string(forKey:"apiModel") ?? "gpt-4.1-2025-04-14"
-        folder = FileManager.default.urls(for:.applicationSupportDirectory,in:.userDomainMask)[0].appendingPathComponent("HymnAIrranger/Projects",isDirectory:true)
+    init(folder: URL? = nil, defaults: UserDefaults = .standard, services: AppServices = .live) {
+        self.services = services
+        self.defaults = defaults
+        cloudEnabled = defaults.bool(forKey:"cloudEnabled")
+        modelID = defaults.string(forKey:"apiModel") ?? "gpt-4.1-2025-04-14"
+        self.folder = folder ?? FileManager.default.urls(for:.applicationSupportDirectory,in:.userDomainMask)[0].appendingPathComponent("HymnAIrranger/Projects",isDirectory:true)
         project = try! Demo.project() // Covered by cross-platform regression tests; no network or user data involved.
         do {
-            try FileManager.default.createDirectory(at:folder,withIntermediateDirectories:true)
-            if let last = UserDefaults.standard.string(forKey:"lastProject"), UUID(uuidString:last) != nil {
-                let url = folder.appendingPathComponent(last+".hymn")
+            try FileManager.default.createDirectory(at:self.folder,withIntermediateDirectories:true)
+            if let last = defaults.string(forKey:"lastProject"), UUID(uuidString:last) != nil {
+                let url = self.folder.appendingPathComponent(last+".hymn")
                 if FileManager.default.fileExists(atPath:url.path) { project = try Project.load(Data(contentsOf:url)) }
             }
         } catch { errorMessage = "Could not restore the last project. Its file has not been overwritten. \(error.localizedDescription)" }
@@ -70,7 +74,7 @@ enum AppSheet: String, Identifiable { case importSong, melody, lyrics, choir, so
         do {
             try project.validated()
             try project.data().write(to:folder.appendingPathComponent(project.id.uuidString+".hymn"),options:.atomic)
-            UserDefaults.standard.set(project.id.uuidString,forKey:"lastProject")
+            defaults.set(project.id.uuidString,forKey:"lastProject")
             refreshLibrary()
         } catch { errorMessage = "Changes remain in this window, but saving failed: \(error.localizedDescription)" }
     }
@@ -83,7 +87,7 @@ enum AppSheet: String, Identifiable { case importSong, melody, lyrics, choir, so
     }
     func open(_ url: URL) {
         guard !busy else { return }
-        do { let p = try Project.load(Data(contentsOf:url)); persist(); player.stop(); project = p; pending = nil; resetSelection(); persist(); refreshScore() }
+        do { let p = try Project.load(Data(contentsOf:url)); persist(); player.stop(); project = p; resetSelection(); persist(); refreshScore() }
         catch { errorMessage = error.localizedDescription }
     }
     func openPanel() {
@@ -97,15 +101,16 @@ enum AppSheet: String, Identifiable { case importSong, melody, lyrics, choir, so
     }
     func newDemo() {
         guard !busy else { return }; persist()
-        do { player.stop(); project = try Demo.project(); pending = nil; resetSelection(); persist(); refreshScore() }
+        do { player.stop(); project = try Demo.project(); resetSelection(); persist(); refreshScore() }
         catch { errorMessage = error.localizedDescription }
     }
-    private func resetSelection() { showBefore = false; selectedNote = nil; exportVoice = nil; passageStart = 1; passageEnd = max(1,score.tune.measureCount); usePassage = false }
+    private func resetSelection() { previousArrangementID = nil; selectedNote = nil; exportVoice = nil; passageStart = 1; passageEnd = max(1,score.tune.measureCount); usePassage = false }
     func commit(_ updated: Score, label: String, request: String = "") {
-        player.stop(); project.commit(updated,label:label,request:request); pending = nil; showBefore = false
+        player.stop(); project.commit(updated,label:label,request:request)
         persist(); resetSelection(); refreshScore(); status = label
     }
     func confirmMelody(_ tune: Tune) {
+        guard !busy else { return }
         do {
             try tune.validated(); var updated = score
             if updated.tune != tune { updated.parts = [] }
@@ -114,6 +119,7 @@ enum AppSheet: String, Identifiable { case importSong, melody, lyrics, choir, so
         } catch { errorMessage = error.localizedDescription }
     }
     func applyLyrics(_ text: String) {
+        guard !busy else { return }
         do {
             var s = score; s.tune = try Lyrics.apply(text,to:s.tune)
             for p in s.parts.indices { for n in s.parts[p].notes.indices { s.parts[p].notes[n].lyrics = s.tune.melody[n].lyrics } }
@@ -121,12 +127,14 @@ enum AppSheet: String, Identifiable { case importSong, melody, lyrics, choir, so
         } catch { errorMessage = error.localizedDescription }
     }
     func updateChoir(_ profile: ChoirProfile) {
+        guard !busy else { return }
         do {
             try profile.validated(); var s = score; s.profile = profile; s.parts = []
             commit(s,label:"Choir profile updated; ready to re-arrange"); sheet = nil
         } catch { errorMessage = error.localizedDescription }
     }
     func transpose(_ semitones: Int) {
+        guard !busy else { return }
         do {
             var s = score; s.tune = try s.tune.transposed(by:semitones); s.parts = []
             // Explicit transpose control is the only operation allowed to alter every melody pitch.
@@ -137,11 +145,11 @@ enum AppSheet: String, Identifiable { case importSong, melody, lyrics, choir, so
     }
     func restore(_ id: UUID) {
         guard !busy else { return }
-        do { player.stop(); try project.checkout(id); pending = nil; resetSelection(); persist(); refreshScore(); status = "Version restored; other versions are preserved" }
+        do { player.stop(); try project.checkout(id); resetSelection(); persist(); refreshScore(); status = "Version restored; other versions are preserved" }
         catch { errorMessage = error.localizedDescription }
     }
     func approve() {
-        guard pending == nil, score.melodyConfirmed, !score.parts.isEmpty else { errorMessage = "Check the melody and accept an arrangement before approving."; return }
+        guard !busy, score.melodyConfirmed, !score.parts.isEmpty else { errorMessage = "Finish arranging and check the melody before approving."; return }
         let problems = Validator.inspect(score)
         guard !problems.contains(where: { $0.severity == .error }) else { errorMessage = "Resolve the score errors before approval."; return }
         let alert = NSAlert(); alert.messageText = "Approve this exact rehearsal version?"
@@ -150,28 +158,91 @@ enum AppSheet: String, Identifiable { case importSong, melody, lyrics, choir, so
         if alert.runModal() == .alertFirstButtonReturn { project.approvedID = project.currentID; persist(); refreshScore(); status = "Approved version frozen for rehearsal" }
     }
     func propose(_ request: String, usingAI: Bool) {
-        guard !busy, pending == nil else { return }
+        guard !busy else { return }
         guard score.melodyConfirmed else { sheet = .melody; return }
         if usingAI && !cloudEnabled { errorMessage = "Enable cloud AI and add your API key in Settings. The local draft does not use AI."; return }
-        let snapshot = score, sourceID = project.currentID
-        let key = usingAI ? KeyStore.load() : "", model = modelID
-        busy = true; status = usingAI ? "Preparing an AI harmony proposal…" : "Searching for a simple local draft…"
+        let snapshot = score, sourceID = project.currentID, projectID = project.id
+        let key = usingAI ? services.loadAPIKey() : "", model = modelID
+        let token = UUID()
+        arrangementToken = token
+        previousArrangementID = nil
+        player.stop()
+        busy = true
+        setArrangementProgress(usingAI ? .requestingAI : .harmonizing)
         operation = Task {
+            // Only the owning task may clear state: a cancelled request can finish
+            // after the user has already started a new request.
+            defer {
+                if arrangementToken == token {
+                    arrangementToken = nil
+                    arrangementProgress = nil
+                    busy = false
+                    operation = nil
+                }
+            }
             do {
-                let plan = usingAI ? try await AIClient(apiKey:key,model:model).harmony(score:snapshot,request:request) : HarmonyPlan(summary:"Local rule-based draft (not AI)",simplicity:snapshot.profile.simplicity)
                 try Task.checkCancellation()
-                let proposed = try await Task.detached(priority:.userInitiated) { try Harmonizer.arrange(snapshot,plan:plan) }.value
+                let plan: HarmonyPlan
+                if usingAI {
+                    plan = try await services.harmonyPlan(snapshot, request, key, model)
+                } else {
+                    plan = HarmonyPlan(summary: "Local rule-based draft (not AI)", simplicity: snapshot.profile.simplicity)
+                }
                 try Task.checkCancellation()
-                guard project.currentID == sourceID else { throw HymnError.invalid("The project changed while the proposal was being made. It was not applied.") }
-                pending = proposed; pendingRequest = request; showBefore = false
-                status = "Proposal ready — listen before keeping it"; busy = false; refreshScore()
-            } catch is CancellationError { busy = false; status = "Cancelled; score unchanged" }
-            catch { busy = false; status = "Score unchanged"; errorMessage = error.localizedDescription }
+                guard arrangementToken == token else { return }
+                setArrangementProgress(.harmonizing)
+                let proposed = try await services.arrange(snapshot, plan)
+                try Task.checkCancellation()
+                guard arrangementToken == token else { return }
+                guard project.id == projectID, project.currentID == sourceID else {
+                    throw HymnError.invalid("The project changed while the arrangement was being made. It was not applied.")
+                }
+                guard proposed.tune == snapshot.tune else {
+                    throw HymnError.invalid("The arrangement changed the locked melody. Nothing was applied.")
+                }
+                let failures = Validator.inspect(proposed).filter { $0.severity == .error }
+                guard failures.isEmpty, !proposed.parts.isEmpty else {
+                    throw HymnError.invalid("The arrangement did not pass the musical checks. Nothing was applied.")
+                }
+                setArrangementProgress(.saving)
+                // A completed arrangement is an editable draft, not a blocking
+                // proposal. Approval stays on its original revision, if any.
+                commit(proposed, label: proposed.origin, request: request)
+                previousArrangementID = sourceID
+                status = "Arrangement ready — continue editing, or restore the previous version."
+            } catch {
+                guard arrangementToken == token else { return }
+                if Task.isCancelled || error is CancellationError || (error as? URLError)?.code == .cancelled {
+                    status = "Cancelled; score unchanged"
+                } else {
+                    status = "Arrangement failed; score unchanged. You can try again."
+                    errorMessage = error.localizedDescription
+                }
+            }
         }
     }
-    func cancelOperation() { operation?.cancel(); status = "Cancelling; the current score is safe" }
-    func acceptProposal() { guard let proposed = pending else { return }; commit(proposed,label:proposed.origin,request:pendingRequest) }
-    func discardProposal() { player.stop(); pending = nil; showBefore = false; refreshScore(); status = "Proposal discarded; score unchanged" }
+    private func setArrangementProgress(_ progress: ArrangementProgress) {
+        arrangementProgress = progress
+        status = progress.title
+    }
+    func cancelOperation() {
+        operation?.cancel()
+        if arrangementToken != nil {
+            // Unlock immediately. Cancellation checks and the token guard prevent
+            // late network/worker results from changing this or a newer score.
+            arrangementToken = nil
+            arrangementProgress = nil
+            operation = nil
+            busy = false
+            status = "Cancelled; score unchanged"
+        } else {
+            status = "Cancelling; the current score is safe"
+        }
+    }
+    func restorePreviousArrangement() {
+        guard let id = previousArrangementID, !busy else { return }
+        restore(id)
+    }
     func playback() {
         if player.isPlaying || player.isPreparing { player.stop(); return }
         let t = displayedScore.tune
@@ -184,6 +255,7 @@ enum AppSheet: String, Identifiable { case importSong, melody, lyrics, choir, so
         player.play(displayedScore,mix:mix,speed:speed,startTick:start,endTick:end,countIn:countIn,loop:loop)
     }
     func importMusicXML(_ url: URL) {
+        guard !busy else { return }
         do { let tune = try MusicXMLImporter.read(Data(contentsOf:url)); install(tune,source:nil,origin:"MusicXML import; melody needs checking") }
         catch { errorMessage = error.localizedDescription }
     }
@@ -192,9 +264,10 @@ enum AppSheet: String, Identifiable { case importSong, melody, lyrics, choir, so
         let profile = score.profile
         project = Project(score:Score(tune:tune,profile:profile,melodyConfirmed:false,origin:origin))
         if let source { project.sources = [source] }
-        pending = nil; resetSelection(); persist(); refreshScore(); status = "Check the imported melody before arranging"; sheet = .melody
+        resetSelection(); persist(); refreshScore(); status = "Check the imported melody before arranging"; sheet = .melody
     }
     func importPDF(_ data: Data, filename: String) {
+        guard !busy else { return }
         guard cloudEnabled else { errorMessage = "Enable cloud AI in Settings first. Your PDF has not been sent."; return }
         guard let document = PDFDocument(data:data), (1...5).contains(document.pageCount) else { errorMessage = "For this alpha, choose a PDF containing one song, with at most five pages."; return }
         let alert = NSAlert(); alert.messageText = "Send this PDF to OpenAI for experimental recognition?"
@@ -213,6 +286,7 @@ enum AppSheet: String, Identifiable { case importSong, melody, lyrics, choir, so
         }
     }
     func importAudio(_ url: URL, tempo: Int) {
+        guard !busy else { return }
         busy = true; status = "Finding the melody locally…"
         operation = Task {
             do {
@@ -227,16 +301,32 @@ enum AppSheet: String, Identifiable { case importSong, melody, lyrics, choir, so
         }
     }
     func saveReference(_ text: String) {
+        guard !busy else { return }
         guard let url = URL(string:text), url.scheme == "https", let host = url.host?.lowercased(), ["youtube.com","www.youtube.com","m.youtube.com","youtu.be"].contains(host) else { errorMessage = "Paste an HTTPS YouTube video link."; return }
         var s = score; s.tune.sourceURL = url.absoluteString
         commit(s,label:"YouTube reference saved"); NSWorkspace.shared.open(url)
     }
-    func saveSettings(apiKey: String) {
-        do { try KeyStore.save(apiKey.trimmingCharacters(in:.whitespacesAndNewlines)); UserDefaults.standard.set(cloudEnabled,forKey:"cloudEnabled"); UserDefaults.standard.set(modelID,forKey:"apiModel"); status = "Settings saved" }
-        catch { errorMessage = error.localizedDescription }
+    func savedAPIKey() -> String { services.loadAPIKey() }
+    func saveSettings(apiKey: String, cloudEnabled: Bool, modelID: String) throws {
+        let key = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        let selectedModel = modelID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cloudEnabled || !key.isEmpty else {
+            throw HymnError.invalid("Enter an API key, or turn off cloud AI before saving.")
+        }
+        guard !selectedModel.isEmpty else {
+            throw HymnError.invalid("Enter an API model before saving.")
+        }
+        // Do not mutate the active settings or dismiss the window on Keychain failure.
+        try services.saveAPIKey(key)
+        defaults.set(cloudEnabled, forKey: "cloudEnabled")
+        defaults.set(selectedModel, forKey: "apiModel")
+        self.cloudEnabled = cloudEnabled
+        self.modelID = selectedModel
+        status = "Settings saved"
     }
     private func exportAllowed() -> Bool {
-        guard pending == nil, score.melodyConfirmed, !score.parts.isEmpty else { errorMessage = "Confirm the melody and keep an arrangement before exporting. Proposals cannot be exported accidentally."; return false }
+        guard !busy else { return false }
+        guard score.melodyConfirmed, !score.parts.isEmpty else { errorMessage = "Confirm the melody and create an arrangement before exporting."; return false }
         guard !Validator.inspect(score).contains(where: { $0.severity == .error }) else { errorMessage = "Resolve score errors before exporting."; return false }
         if !isApproved {
             let alert = NSAlert(); alert.messageText = "Export this unapproved draft?"; alert.informativeText = "The files will identify this exact draft version. Approve a checked version before distributing rehearsal material."

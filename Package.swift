@@ -13,5 +13,6 @@ var products: [Product] = [
 #if os(macOS)
 targets.append(.executableTarget(name: "HymnAIrranger", dependencies: ["HymnCore"], resources: [.copy("Resources/Web")]))
 products.append(.executable(name: "HymnAIrranger", targets: ["HymnAIrranger"]))
+targets.append(.testTarget(name: "HymnAppTests", dependencies: ["HymnAIrranger", "HymnCore"]))
 #endif
 let package = Package(name: "HymnAIrranger", platforms: [.macOS(.v14)], products: products, targets: targets)

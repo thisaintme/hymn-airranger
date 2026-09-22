@@ -16,7 +16,14 @@ struct WorkspaceView: View {
                 HStack(spacing:0) {
                     VStack(spacing:0) {
                         if !model.score.melodyConfirmed { reviewBanner }
-                        if model.pending != nil { proposalBanner }
+                        if let progress = model.arrangementProgress {
+                            ArrangementProgressBanner(progress: progress, cancel: model.cancelOperation)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .layoutPriority(1)
+                        } else if model.previousArrangementID != nil {
+                            arrangementReadyBanner
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                         if model.workspace == .print { printControls }
                         if !renderer.error.isEmpty {
                             Text(renderer.error).font(.callout).foregroundStyle(.orange).padding().frame(maxWidth:.infinity,alignment:.leading)
@@ -41,7 +48,6 @@ struct WorkspaceView: View {
         }
         .onChange(of:model.workspace) { _,_ in model.refreshScore() }
         .onChange(of:model.exportVoice) { _,_ in model.refreshScore() }
-        .onChange(of:model.showBefore) { _,_ in player.stop(); model.refreshScore() }
         .onReceive(player.$tick) { renderer.highlight($0) }
         .onAppear { model.refreshScore() }
     }
@@ -50,7 +56,7 @@ struct WorkspaceView: View {
             VStack(alignment:.leading,spacing:7) {
                 HStack(spacing:9) {
                     Text(model.displayedScore.tune.title).font(.system(size:27,weight:.semibold,design:.serif)).lineLimit(1)
-                    if model.isApproved && model.pending == nil { Label("Approved",systemImage:"checkmark.seal.fill").font(.caption).foregroundStyle(.tint) }
+                    if model.isApproved { Label("Approved",systemImage:"checkmark.seal.fill").font(.caption).foregroundStyle(.tint) }
                 }
                 Text("\(model.displayedScore.profile.voicing.label)   ·   \(model.score.tune.beats)/\(model.score.tune.beatUnit)   ·   \(keyName(model.score.tune))   ·   Piano-supported choir")
                     .font(.caption).foregroundStyle(.secondary)
@@ -68,19 +74,20 @@ struct WorkspaceView: View {
             Button("Listen & check") { model.sheet = .melody }.buttonStyle(.borderedProminent)
         }.padding(14).background(Color.orange.opacity(0.10))
     }
-    private var proposalBanner: some View {
-        VStack(alignment:.leading,spacing:10) {
-            HStack {
-                Label("Listen to this proposal",systemImage:"sparkles").font(.headline)
-                Spacer()
-                Picker("Compare",selection:$model.showBefore) { Text("Before").tag(true); Text("After").tag(false) }.pickerStyle(.segmented).frame(width:150)
+    private var arrangementReadyBanner: some View {
+        HStack(spacing: 14) {
+            Image(systemName: "checkmark.circle.fill").foregroundStyle(.tint)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Your new draft is ready").font(.headline)
+                Text("Continue editing or practising. The previous arrangement is safe in Versions.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
-            HStack {
-                Text("Nothing has been committed. The original is safe.").font(.caption).foregroundStyle(.secondary)
-                Spacer()
-                Button("Discard") { model.discardProposal() }
-                Button("Keep version") { model.acceptProposal() }.buttonStyle(.borderedProminent)
-            }
+            Spacer(minLength: 4)
+            Button("Restore previous") { model.restorePreviousArrangement() }
+                .disabled(model.busy)
+            Button { model.previousArrangementID = nil } label: {
+                Image(systemName: "xmark")
+            }.buttonStyle(.borderless).help("Dismiss this message")
         }.padding(14).background(Color.accentColor.opacity(0.07))
     }
     private var printControls: some View {
@@ -147,7 +154,7 @@ struct TransportBar: View {
                 if let word = currentLyric { Text(word).font(.system(size:20,weight:.medium,design:.serif)).foregroundStyle(.tint).lineLimit(1).frame(maxWidth:180) }
                 Picker("Speed",selection:$model.speed) { Text("50%").tag(0.5); Text("75%").tag(0.75); Text("100%").tag(1.0); Text("125%").tag(1.25) }.frame(width:108)
                 Toggle("Count-in",isOn:$model.countIn).toggleStyle(.checkbox).font(.caption)
-                Button { model.exportPack() } label: { Label("Rehearsal pack",systemImage:"square.and.arrow.up") }.disabled(model.busy || model.pending != nil)
+                Button { model.exportPack() } label: { Label("Rehearsal pack",systemImage:"square.and.arrow.up") }.disabled(model.busy)
             }
         }.padding(.horizontal,20).padding(.vertical,16).background(.background)
     }
@@ -193,27 +200,29 @@ struct InspectorView: View {
     var body: some View {
         VStack(alignment:.leading,spacing:15) {
             Picker("Inspector",selection:$tab) { Text("Assistant").tag("Assistant"); Text("Versions").tag("Versions") }.pickerStyle(.segmented)
-            if tab == "Assistant" { assistant } else { versions }
+            if tab == "Assistant" { ScrollView { assistant } } else { versions }
         }.padding(17).background(.background)
     }
     private var assistant: some View {
         VStack(alignment:.leading,spacing:14) {
             HStack { Image(systemName:"sparkles").foregroundStyle(.tint); Text("Arrange for real singers").font(.headline) }
             Text("The melody stays yours. We shape the supporting voices around it.").font(.callout).foregroundStyle(.secondary).lineSpacing(3)
-            if let p = model.pending {
-                Text(p.origin).font(.callout).padding(12).frame(maxWidth:.infinity,alignment:.leading).background(Color.accentColor.opacity(0.07),in:RoundedRectangle(cornerRadius:9))
+            if model.previousArrangementID != nil {
+                Text(model.score.origin).font(.callout).lineLimit(4)
+                    .padding(12).frame(maxWidth:.infinity,alignment:.leading)
+                    .background(Color.accentColor.opacity(0.07),in:RoundedRectangle(cornerRadius:9))
             }
             VStack(alignment:.leading,spacing:8) {
                 Button("Create a traditional AI arrangement") { model.propose("Create a gentle, simple traditional hymn arrangement for this choir.",usingAI:true) }.buttonStyle(.borderedProminent).controlSize(.large)
                 Button("Try a local draft · no AI") { model.propose("Create a local draft",usingAI:false) }.buttonStyle(.link).font(.caption)
-            }.disabled(model.busy || model.pending != nil)
+            }.disabled(model.busy)
             Divider()
             Text("What should change?").font(.subheadline.weight(.semibold))
-            TextEditor(text:$request).font(.body).frame(height:110).padding(5).background(Color.primary.opacity(0.03),in:RoundedRectangle(cornerRadius:8)).overlay(RoundedRectangle(cornerRadius:8).stroke(Color.primary.opacity(0.09)))
+            TextEditor(text:$request).disabled(model.busy).font(.body).frame(height:110).padding(5).background(Color.primary.opacity(0.03),in:RoundedRectangle(cornerRadius:8)).overlay(RoundedRectangle(cornerRadius:8).stroke(Color.primary.opacity(0.09)))
             HStack {
-                Text("AI proposes. You decide.").font(.caption2).foregroundStyle(.secondary)
+                Text("Saved as a draft. You approve.").font(.caption2).foregroundStyle(.secondary)
                 Spacer()
-                Button { model.propose(request,usingAI:true); request = "" } label: { Label("Propose",systemImage:"arrow.up") }.buttonStyle(.borderedProminent).disabled(request.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty || model.busy || model.pending != nil)
+                Button { model.propose(request,usingAI:true); request = "" } label: { Label("Apply change",systemImage:"arrow.up") }.buttonStyle(.borderedProminent).disabled(request.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty || model.busy)
             }
             Button("Make the alto and tenor easier") { request = "Make the alto and tenor movement simpler, without changing the melody." }.buttonStyle(.link).font(.caption)
             Button("A more settled final phrase") { request = "Use a simple, settled cadence in the final phrase. Keep the melody unchanged." }.buttonStyle(.link).font(.caption)
@@ -222,20 +231,21 @@ struct InspectorView: View {
                 Button("Melody") { model.sheet = .melody }
                 Button("Lyrics") { model.sheet = .lyrics }
                 Menu("More") { Button("Choir profile") { model.sheet = .choir }; Button("Source") { model.sheet = .source }; Button("Transpose down a semitone") { model.transpose(-1) }; Button("Transpose up a semitone") { model.transpose(1) } }
-            }.disabled(model.busy || model.pending != nil)
+            }.disabled(model.busy)
             Text("MUSICAL CHECKS").font(.system(size:10,weight:.semibold)).tracking(1).foregroundStyle(.secondary)
-            ScrollView {
-                VStack(alignment:.leading,spacing:11) {
-                    if model.issues.isEmpty { Label("Basic checks passed. Please still listen.",systemImage:"checkmark.circle").font(.caption).foregroundStyle(.tint) }
-                    ForEach(model.issues) { issue in
-                        Label(issue.measure > 0 ? "Bar \(issue.measure): \(issue.message)" : issue.message,systemImage:issue.severity == .error ? "xmark.octagon" : "exclamationmark.triangle").font(.caption).foregroundStyle(issue.severity == .error ? Color.red : Color.secondary)
-                    }
-                }.frame(maxWidth:.infinity,alignment:.leading)
-            }
+            musicalChecks
             Spacer(minLength:0)
-            Button { model.approve() } label: { Label("Approve rehearsal version",systemImage:"checkmark.seal").frame(maxWidth:.infinity) }.disabled(model.busy || model.pending != nil)
+            Button { model.approve() } label: { Label("Approve rehearsal version",systemImage:"checkmark.seal").frame(maxWidth:.infinity) }.disabled(model.busy)
             Text("Alpha limits: simple chord-based, same-rhythm parts. AI chat cannot yet rewrite rhythms, add an accompaniment, or understand arbitrary notation edits.").font(.caption2).foregroundStyle(.secondary)
         }
+    }
+    private var musicalChecks: some View {
+        VStack(alignment:.leading,spacing:11) {
+            if model.issues.isEmpty { Label("Basic checks passed. Please still listen.",systemImage:"checkmark.circle").font(.caption).foregroundStyle(.tint) }
+            ForEach(model.issues) { issue in
+                Label(issue.measure > 0 ? "Bar \(issue.measure): \(issue.message)" : issue.message,systemImage:issue.severity == .error ? "xmark.octagon" : "exclamationmark.triangle").font(.caption).foregroundStyle(issue.severity == .error ? Color.red : Color.secondary)
+            }
+        }.frame(maxWidth:.infinity,alignment:.leading)
     }
     private var versions: some View {
         VStack(alignment:.leading,spacing:14) {

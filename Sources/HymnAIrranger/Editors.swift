@@ -229,22 +229,47 @@ struct RangeEditor: View {
 }
 
 struct SettingsView: View {
-    @ObservedObject var model: AppModel
-    @State private var key = KeyStore.load()
-    @State private var saved = false
+    @StateObject private var form: SettingsForm
+    @StateObject private var windowCloser = SettingsWindowCloser()
+
+    init(model: AppModel) {
+        _form = StateObject(wrappedValue: SettingsForm(model: model))
+    }
+
     var body: some View {
-        VStack(alignment:.leading,spacing:20) {
-            SheetHeader(title:"Your music stays yours",subtitle:"Projects, playback and exports stay local. AI is an explicit, optional cloud action.")
-            Toggle("Enable cloud AI requests to OpenAI",isOn:$model.cloudEnabled)
-            SecureField("OpenAI API key",text:$key).textFieldStyle(.roundedBorder)
-            Text("Saved only in the macOS Keychain, never in a project or an exported rehearsal pack. API access may be billed separately.").font(.caption).foregroundStyle(.secondary)
-            TextField("API model",text:$model.modelID).textFieldStyle(.roundedBorder)
-            Text("The pinned starting model is gpt-4.1-2025-04-14. This is a compatibility baseline, not a claim that it is the newest or best musical model. Live requests have not been validated in this development environment.").font(.caption).foregroundStyle(.secondary)
-            Divider()
-            Text("Arrangement requests send the current score, lyrics, metadata and your instruction. PDF recognition sends the entire selected PDF after a second confirmation. Recordings are processed locally. Requests use store:false; this is not a guarantee of zero provider retention. No analytics are included.").font(.callout).foregroundStyle(.secondary).lineSpacing(3)
-            Spacer()
-            HStack { if saved { Text("Settings saved").font(.caption).foregroundStyle(.tint) }; Spacer(); Button("Save settings") { model.saveSettings(apiKey:key); saved = model.errorMessage.isEmpty }.buttonStyle(.borderedProminent) }
-        }.padding(28)
+        VStack(alignment: .leading, spacing: 18) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    SheetHeader(title: "Your music stays yours", subtitle: "Projects, playback and exports stay local. AI is an explicit, optional cloud action.")
+                    Toggle("Enable cloud AI requests to OpenAI", isOn: $form.cloudEnabled)
+                    SecureField("OpenAI API key", text: $form.apiKey).textFieldStyle(.roundedBorder)
+                    Text("Saved only in the macOS Keychain, never in a project or an exported rehearsal pack. API access may be billed separately.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    TextField("API model", text: $form.modelID).textFieldStyle(.roundedBorder)
+                    Text("The pinned starting model is gpt-4.1-2025-04-14. This is a compatibility baseline, not a claim that it is the newest or best musical model.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Divider()
+                    Text("Arrangement requests send the current score, lyrics, metadata and your instruction. PDF recognition sends the entire selected PDF after a second confirmation. Recordings are processed locally. Requests use store:false; this is not a guarantee of zero provider retention. No analytics are included.")
+                        .font(.callout).foregroundStyle(.secondary).lineSpacing(3)
+                }.frame(maxWidth: .infinity, alignment: .leading)
+            }
+            if !form.errorMessage.isEmpty {
+                Label(form.errorMessage, systemImage: "exclamationmark.triangle")
+                    .font(.callout).foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            HStack {
+                Spacer()
+                Button("Cancel") { windowCloser.close() }
+                    .keyboardShortcut(.cancelAction)
+                Button("Save settings") { form.save(close: windowCloser.close) }
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(28)
+        .background(SettingsWindowReader(closer: windowCloser).frame(width: 0, height: 0))
+        .onAppear { form.reload() }
     }
 }
 
