@@ -97,19 +97,19 @@ jobs:
           fi
           cat > release-notes.md <<EOF
           ## What's changed
-          Added **Bring in a song → Rehearse an existing arrangement** for experimental full-choir PDF transcription and local MusicXML import. Match the vocal lines, correct and check every part, then go straight to Practice without generating new harmony. The original PDF stays unchanged for viewing, saving and printing. Range and voice-crossing issues are warnings rather than rewritten notes.
+          Fixed the handoff from **Bring in a song** to **Check the existing arrangement**. The app now updates the content of one stable modal instead of replacing an already-open sheet. Recognition, validation and save errors appear inside the active modal, where they can be read and copied. Processing errors release the controls for an explicit retry.
 
-          Supports bounded SAB/SATB scores with independent timing, lyrics and cross-bar ties. PDF recognition is experimental and requires your cloud key plus explicit upload consent (up to five pages / 10 MB). MusicXML is local (uncompressed score-partwise, up to 5 MB). Repeats/jumps, tuplets, changing key/meter/tempo and divisi are not supported; piano accompaniment is not synthesized. Original-page highlighting is not included; highlighting uses the practice transcription.
+          Completed transcriptions remain pending until **Finish review & rehearse** succeeds. A **Continue review** banner and **Review later** action let you resume a pending transcription and corrections without another upload or AI call. A second import cannot silently replace pending review work. This recovery is limited to the current app session, not quitting or restarting; previously abandoned alpha-5 imports cannot be recovered from disk.
 
-          Imported projects use format 3 and need alpha 5 or later; older formats still open. Back up important projects. See Docs/Alpha 5 fixes.md for scope and the complete review workflow.
+          Existing projects, notes, API-key storage and project formats are unchanged. PDF recognition remains experimental and still has the alpha-5 notation/input limits. The update fixes presentation and feedback, not recognition accuracy for every PDF. See Docs/Alpha 6 fixes.md.
 
           ## Download and test
           Download **Hymn-AIrranger-macOS-arm64.zip** below, extract it, and move **Hymn AIrranger.app** to Applications.
           Requires **Apple Silicon and macOS 14 or later**. No Xcode or build tools are needed.
 
-          **Development alpha: ad-hoc signed, NOT Apple-notarized.** Read INSTALL.md before opening. Do not disable Gatekeeper globally. This is not a choir-ready production release.
+          **Development alpha: ad-hoc signed, NOT Apple-notarized.** Read INSTALL.md before opening. Do not disable Gatekeeper globally. Back up important projects before alpha testing.
 
-          The native build and automated core/app/integration tests passed on the macOS runner. Packaging verifies resources, architecture, and the app signature before and after ZIP extraction. Tests exercise transcription review, cancellation, preservation, WebKit engraving, visible voice/key labels, A4 PDF output and native MP3 encoding/decoding. Recognition fixtures are simulated: no paid live-model requests or real-repertoire PDF benchmark were run. Check the imported notes against your original before sharing practice tracks.
+          The macOS build, automated core/app tests and native integration checks passed before publication. Seven new tests open real NSWindow sheets using the production presenter, check displayed import/review/error content, same-sheet handoff, library installation, pending-review recovery, retry, correction retention and save failure. Packaging verifies resources, architecture and the app signature before and after ZIP extraction. Test recognition responses are simulated; no paid live-model requests or user PDFs were used.
 
           Source commit: $GITHUB_SHA
           Build: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID
