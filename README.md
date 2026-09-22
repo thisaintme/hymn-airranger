@@ -15,6 +15,10 @@ The default is **Soprano · Alto · Lower voice**, with **Soprano · Alto · Ten
 
 The melody is explicitly reviewed before arrangement. Accepted edits save the complete musical result. Restoring an older version preserves the later versions. Printed notation and practice sound are derived from the same score data.
 
+## Rhythm, dynamics and request logs
+
+See [Alpha 3 changes](Docs/Alpha%203%20fixes.md). Supporting voices now support bounded offbeat/repeated entries, with matching notation and practice audio, plus p/mp/mf/f loudness spans. Unsupported and missing-voice requests leave the score unchanged. Use **Export prompt log…** in Assistant or Versions to share request diagnostics without full project attachments. Expression-edited projects use format 2 and require alpha 3 or later; back up projects before upgrading.
+
 ## What is in this alpha?
 
 | Area | Implemented source | Validation status |
@@ -62,7 +66,7 @@ For AI use, enable cloud processing in Settings and enter your own API key there
 
 ### Lyrics and rehearsal
 
-Lyrics use one nonempty line per full verse, up to eight verses. Separate syllables with hyphens (`Gna-de`); `_` reserves a melody-note position with no new syllable. Original text is retained. There is no automatic German syllabification or reliable melisma-extender layout yet. Highlighting of independent continuation notes needs refinement.
+Lyrics use one nonempty line per full verse, up to eight verses. Separate syllables with hyphens (`Gna-de`); `_` reserves a melody-note position with no new syllable. Original text is retained. There is no automatic German syllabification or full melisma-extender layout yet. Repeated/tied segments retain their source syllable for highlighting.
 
 Practice includes a full mix, individual gains, solo, emphasized part, a passage loop, count-in, and speed change without pitch transposition. The tone is deliberately simple and sample-free. It is **not** a realistic sampled piano, sung-word synthesis, or a separately composed piano accompaniment.
 
@@ -72,9 +76,9 @@ A single-part PDF can be selected in Print; single-part PDFs are not automatical
 
 ## Limits that matter musically
 
-The present harmonizer searches diatonic triads, with a raised dominant in minor. Lower voices follow the melody's rhythm. It is not a complete chorale engine: non-chord tones, chromatic harmony, modulations, independent rhythms, rich cadences, breath planning, and idiomatic piano accompaniment need more work. Parallel perfect intervals and large leaps are warnings/penalties, not proof of perfect voice leading. A no-warning result can still be unmusical.
+The present harmonizer searches diatonic triads, with a raised dominant in minor. Harmony generation preserves existing supporting rhythms. Explicit rhythm requests can create independent offbeat/repeated entries inside original syllable slots. It is not a complete chorale engine: non-chord tones, chromatic harmony, modulations, arbitrary independent counterpoint, rich cadences, breath planning, and idiomatic piano accompaniment need more work. Parallel perfect intervals and large leaps are warnings/penalties, not proof of perfect voice leading. A no-warning result can still be unmusical.
 
-The supported rhythmic grid is a sixteenth note: no tuplets. Tunes are limited to 512 events and 600 quarter-note beats. Key and meter are fixed per tune. Review incomplete final bars and pickups manually. The broad chat interface only plans chord preferences, simplicity, and an optional bar span; it is **not** an unrestricted natural-language notation editor.
+The supported rhythmic grid is a sixteenth note: no tuplets. Tunes are limited to 512 events and 600 quarter-note beats. Key and meter are fixed per tune. Review incomplete final bars and pickups manually. The chat interface now separates harmony, bounded supporting-rhythm edits and basic loudness spans; it is **not** an unrestricted natural-language notation editor.
 
 Do not distribute generated arrangements to the choir without listening and musical review. No production readiness or repertoire-wide musical quality is asserted.
 

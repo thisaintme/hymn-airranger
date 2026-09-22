@@ -30,7 +30,7 @@ final class WorkflowTests: XCTestCase {
         var isolated = services ?? AppServices.live
         isolated.loadAPIKey = { "test-key-not-a-real-credential" }
         if services == nil {
-            isolated.harmonyPlan = { _, _, _, _ in HarmonyPlan(summary: "Test arrangement") }
+            isolated.harmonyPlan = { _, _, _, _ in HarmonyPlan(summary: "Test arrangement", simplicity: 3) }
             isolated.saveAPIKey = { _ in }
         }
         addTeardownBlock {
@@ -63,7 +63,7 @@ final class WorkflowTests: XCTestCase {
         XCTAssertEqual(model.score, before.current.score)
         // Re-entrant button/menu events must not launch another request.
         model.propose("Do not launch this duplicate", usingAI: true)
-        await gate.release(HarmonyPlan(summary: "Gentle test harmony"))
+        await gate.release(HarmonyPlan(summary: "Gentle test harmony", simplicity: 3))
         await task.value
         XCTAssertFalse(model.busy)
         XCTAssertNil(model.arrangementProgress)
@@ -162,7 +162,7 @@ final class WorkflowTests: XCTestCase {
         XCTAssertTrue(model.busy, "The old task must not unlock the new request")
         XCTAssertEqual(model.arrangementProgress, .requestingAI)
         XCTAssertEqual(model.project, original)
-        await newGate.release(HarmonyPlan(summary: "Fresh response"))
+        await newGate.release(HarmonyPlan(summary: "Fresh response", simplicity: 3))
         await newTask.value
         XCTAssertFalse(model.busy)
         XCTAssertEqual(model.project.revisions.count, original.revisions.count + 1)
@@ -288,5 +288,101 @@ final class WorkflowTests: XCTestCase {
         form.reload() // Reopening after Cancel restores the saved values.
         XCTAssertEqual(form.modelID, originalModel)
         XCTAssertEqual(form.cloudEnabled, originalCloud)
+    }
+}
+
+
+extension WorkflowTests {
+    @MainActor func testUnsupportedResponseDoesNotCallArrangerOrCreateVersion() async throws {
+        var services = AppServices.live
+        services.harmonyPlan = { _, _, _, _ in HarmonyPlan(summary: "Tuplets are not supported", action: .unsupported) }
+        services.arrange = { _, _ in XCTFail("Unsupported responses must never enter harmonization"); throw HymnError.invalid("Unexpected call") }
+        let (model, _, _) = try fixture(services: services)
+        let before = model.project
+        model.propose("Add triplets", usingAI: true)
+        await model.operation?.value
+        XCTAssertEqual(model.project, before); XCTAssertFalse(model.busy)
+        XCTAssertTrue(model.assistantReply.contains("not supported"))
+        XCTAssertEqual(model.promptHistory.last?.outcome, .unsupported)
+        XCTAssertEqual(model.promptHistory.last?.plan?.action, .unsupported)
+    }
+    @MainActor func testNamedMissingVoiceFailsBeforePaidRequest() async throws {
+        var services = AppServices.live
+        services.harmonyPlan = { _, _, _, _ in XCTFail("Do not bill for a known missing voice"); return HarmonyPlan() }
+        let (model, _, _) = try fixture(services: services)
+        let before = model.project
+        model.propose("Add tenor syncopation", usingAI: true)
+        XCTAssertNil(model.operation); XCTAssertFalse(model.busy); XCTAssertEqual(model.project, before)
+        XCTAssertTrue(model.assistantReply.contains("no Tenor"))
+        XCTAssertEqual(model.promptHistory.last?.outcome, .unsupported)
+    }
+    @MainActor func testWrongEditKindIsLoggedButCannotReharmonizeRhythmRequest() async throws {
+        var services = AppServices.live
+        services.harmonyPlan = { _, _, _, _ in HarmonyPlan(summary: "Harmonic substitute", simplicity: 4, targetVoices: [.alto]) }
+        services.arrange = { _, _ in XCTFail("Wrong-kind plan must not be applied"); return try Demo.project().current.score }
+        let (model, _, _) = try fixture(services: services)
+        let before = model.project
+        model.propose("Change alto rhythm", usingAI: true)
+        await model.operation?.value
+        XCTAssertEqual(model.project, before); XCTAssertFalse(model.busy)
+        XCTAssertEqual(model.promptHistory.last?.outcome, .failed)
+        XCTAssertEqual(model.promptHistory.last?.plan?.action, .harmonize)
+    }
+    @MainActor func testRealRhythmEditCommitsAndLogsMeasuredChanges() async throws {
+        var services = AppServices.live
+        services.harmonyPlan = { score, _, _, _ in
+            let note = score.tune.melody.first { $0.ticks >= 960 }!
+            return HarmonyPlan(summary: "Delay one alto entrance", action: .rhythm, targetVoices: [.alto], rhythmEdits: [.init(voice: .alto, sourceNoteID: note.id, pattern: .offbeat)])
+        }
+        let (model, _, folder) = try fixture(services: services)
+        let before = model.project
+        model.propose("Change alto rhythm", usingAI: true)
+        await model.operation?.value
+        XCTAssertEqual(model.project.schemaVersion, 2)
+        XCTAssertEqual(model.project.revisions.count, before.revisions.count + 1)
+        XCTAssertEqual(model.score.tune, before.current.score.tune)
+        XCTAssertFalse(model.busy)
+        XCTAssertEqual(model.promptHistory.last?.outcome, .applied)
+        XCTAssertEqual(model.promptHistory.last?.changes?.voices.first { $0.voice == .alto }?.rhythmSlots, 1)
+        XCTAssertEqual(model.promptHistory.last?.changes?.voices.first { $0.voice == .alto }?.pitchSlots, 0)
+        let copy = try Project.load(Data(contentsOf: folder.appendingPathComponent(model.project.id.uuidString + ".hymn")))
+        XCTAssertEqual(copy, model.project)
+        model.propose("Change alto rhythm", usingAI: true)
+        await model.operation?.value
+        XCTAssertEqual(model.project, copy, "Repeating the same pattern should not add a duplicate draft")
+        XCTAssertEqual(model.promptHistory.last?.outcome, .unchanged)
+    }
+    @MainActor func testFailuresAndCancelledRequestsAreExportedWithoutCredentials() async throws {
+        var services = AppServices.live
+        services.harmonyPlan = { _, _, _, _ in throw URLError(.timedOut) }
+        let (model, _, _) = try fixture(services: services)
+        model.propose("Please make a draft", usingAI: true)
+        await model.operation?.value
+        let text = String(decoding: try model.promptLogData(), as: UTF8.self)
+        XCTAssertTrue(text.contains("Please make a draft")); XCTAssertTrue(text.contains("failed"))
+        XCTAssertFalse(text.contains("test-key-not-a-real-credential")); XCTAssertFalse(text.contains("Authorization"))
+        XCTAssertFalse(text.contains("\"parts\""))
+        let gate = Gate<HarmonyPlan>()
+        services.harmonyPlan = { _, _, _, _ in await gate.wait() }
+        let (cancelled, _, _) = try fixture(services: services)
+        cancelled.propose("Cancel this request", usingAI: true)
+        let task = try XCTUnwrap(cancelled.operation)
+        try await eventually { await gate.isWaiting }
+        cancelled.cancelOperation()
+        await gate.release(HarmonyPlan()); await task.value
+        XCTAssertEqual(cancelled.promptHistory.last?.outcome, .cancelled)
+        XCTAssertTrue(String(decoding: try cancelled.promptLogData(), as: UTF8.self).contains("Cancel this request"))
+    }
+    @MainActor func testPromptLogsPersistWithoutTouchingScoreHistory() async throws {
+        let (model, defaults, folder) = try fixture()
+        let before = model.project
+        model.persist()
+        model.propose("Add tenor syncopation", usingAI: true)
+        XCTAssertEqual(model.project, before)
+        var services = AppServices.live; services.loadAPIKey = { "" }
+        let reopened = AppModel(folder: folder, defaults: defaults, services: services)
+        XCTAssertEqual(reopened.project, before)
+        XCTAssertEqual(reopened.promptHistory.last?.request, "Add tenor syncopation")
+        XCTAssertEqual(reopened.promptHistory.last?.outcome, .unsupported)
     }
 }

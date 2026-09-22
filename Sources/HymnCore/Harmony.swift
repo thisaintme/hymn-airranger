@@ -7,62 +7,19 @@ public struct ScoreIssue: Identifiable, Codable, Sendable {
     public var measure: Int
     public var message: String
 }
-public enum Validator {
-    public static func inspect(_ score: Score) -> [ScoreIssue] {
-        var issues: [ScoreIssue] = []
-        func add(_ severity: Severity, _ measure: Int, _ message: String) { issues.append(.init(severity: severity, measure: measure, message: message)) }
-        let tune = score.tune
-        do { try tune.validated(); try score.profile.validated() }
-        catch { add(.error, 0, error.localizedDescription); return issues }
-        let starts = tune.noteStarts
-        let parts = score.effectiveParts
-        guard Set(parts.map(\.voice)).count == parts.count else { add(.error, 0, "Duplicate voice parts."); return issues }
-        if !score.parts.isEmpty && Set(parts.map(\.voice)) != Set(score.profile.voicing.voices) { add(.error, 0, "The score does not contain the voices selected for this choir.") }
-        for part in parts {
-            guard part.notes.count == tune.melody.count else { add(.error, 0, "\(part.voice.name) does not match the melody's timing grid."); continue }
-            var previous: Int?
-            for (i, note) in part.notes.enumerated() {
-                let bar = tune.measure(at: starts[i])
-                guard note.id == tune.melody[i].id && note.ticks == tune.melody[i].ticks else { add(.error, bar, "\(part.voice.name): note identity or rhythm changed unexpectedly."); continue }
-                if (note.pitch == nil) != (tune.melody[i].pitch == nil) { add(.error, bar, "All parts must follow the melody's rests in this alpha.") }
-                if note.lyrics != tune.melody[i].lyrics { add(.error, bar, "\(part.voice.name): lyrics differ from the verified melody.") }
-                if let pitch = note.pitch {
-                    guard (0...127).contains(pitch) else { add(.error, bar, "Invalid MIDI pitch in an arranged voice."); continue }
-                    if !score.profile[part.voice].contains(pitch) { add(score.parts.isEmpty ? .warning : .error, bar, "\(part.voice.name): \(pitchName(pitch)) is outside the configured range.") }
-                    if let p = previous, abs(p - pitch) > 7 { add(.warning, bar, "\(part.voice.name): a large leap needs a listening check.") }
-                    previous = pitch
-                } else { previous = nil }
-            }
-        }
-        if let soprano = parts.first(where: { $0.voice == .soprano }), soprano.notes != tune.melody { add(.error, 0, "The soprano must preserve the source melody and lyrics exactly.") }
-        guard !issues.contains(where: { $0.severity == .error }), parts.allSatisfy({ $0.notes.count == tune.melody.count }) else { return issues }
-        let ordered = score.profile.voicing.voices.compactMap { v in parts.first { $0.voice == v } }
-        for i in tune.melody.indices where tune.melody[i].pitch != nil {
-            let bar = tune.measure(at: starts[i])
-            for a in 0..<ordered.count {
-                for b in (a + 1)..<ordered.count {
-                    guard let pa = ordered[a].notes[i].pitch, let pb = ordered[b].notes[i].pitch else { continue }
-                    if pa < pb { add(.error, bar, "\(ordered[a].voice.name) crosses below \(ordered[b].voice.name).") }
-                    if i > 0, let qa = ordered[a].notes[i-1].pitch, let qb = ordered[b].notes[i-1].pitch {
-                        let old = abs(qa-qb) % 12, new = abs(pa-pb) % 12
-                        if old == new && [0,7].contains(new) && (pa-qa)*(pb-qb) > 0 { add(.warning, bar, "Parallel perfect intervals between \(ordered[a].voice.name) and \(ordered[b].voice.name); listen before approval.") }
-                    }
-                }
-            }
-        }
-        var seen = Set<String>()
-        return issues.filter { seen.insert($0.id).inserted }
-    }
-}
-
 /// AI produces only this bounded musical plan, never executable code or replacement project files.
-public struct HarmonyPlan: Codable, Sendable {
+public struct HarmonyPlan: Codable, Equatable, Sendable {
+    public var action: PlanAction
+    public var targetVoices: [Voice]
+    public var rhythmEdits: [RhythmEdit]
+    public var dynamicEdits: [DynamicEdit]
     public var summary: String
     public var chordDegrees: [Int]
     public var simplicity: Double
     public var measureStart: Int
     public var measureEnd: Int
-    public init(summary: String = "Simple traditional draft", chordDegrees: [Int] = [], simplicity: Double = 2, measureStart: Int = 0, measureEnd: Int = 0) {
+    public init(summary: String = "Simple traditional draft", chordDegrees: [Int] = [], simplicity: Double = 2, measureStart: Int = 0, measureEnd: Int = 0, action: PlanAction = .harmonize, targetVoices: [Voice] = [], rhythmEdits: [RhythmEdit] = [], dynamicEdits: [DynamicEdit] = []) {
+        self.action = action; self.targetVoices = targetVoices; self.rhythmEdits = rhythmEdits; self.dynamicEdits = dynamicEdits
         self.summary = summary; self.chordDegrees = chordDegrees; self.simplicity = simplicity; self.measureStart = measureStart; self.measureEnd = measureEnd
     }
     public func validated(for tune: Tune) throws {
@@ -79,10 +36,13 @@ public enum Harmonizer {
 
     public static func arrange(_ source: Score, plan: HarmonyPlan = .init()) throws -> Score {
         try source.tune.validated(); try source.profile.validated(); try plan.validated(for: source.tune)
+        try plan.validateOperations(for: source)
+        if plan.action != .harmonize { return try ExpressiveEditor.apply(source, plan: plan) }
         let tune = source.tune, voices = source.profile.voicing.voices
         let starts = tune.noteStarts
         var beam = [Path(frames: [], degree: 1, cost: 0)]
         let oldParts = source.parts
+        let oldGroups = try Dictionary(uniqueKeysWithValues: oldParts.map { ($0.voice, try PartTiming.groups($0, tune: tune)) })
         if plan.measureStart > 0 && Set(oldParts.map(\.voice)) != Set(voices) {
             throw HymnError.invalid("Create a full arrangement before editing a passage.")
         }
@@ -97,12 +57,20 @@ public enum Harmonizer {
             let isLocked = plan.measureStart > 0 && !(plan.measureStart...plan.measureEnd).contains(measure)
             var candidates: [Candidate]
             if isLocked {
-                let pitches = voices.compactMap { voice in oldParts.first { $0.voice == voice }?.notes[index].pitch }
+                let pitches = voices.compactMap { voice in oldGroups[voice]?[index].first(where: { $0.pitch != nil })?.pitch }
                 guard pitches.count == voices.count else { throw HymnError.invalid("The existing passage cannot be locked safely.") }
                 candidates = [.init(pitches: pitches, degree: 0, cost: 0)]
             } else {
                 candidates = candidatesFor(melody: melody, tune: tune, profile: source.profile)
                 guard !candidates.isEmpty else { throw HymnError.invalid("No supported harmony fits measure \(measure), note \(index + 1), within these ranges. This alpha handles diatonic major/minor melodies and a raised minor-key dominant; chromatic passages may need a later engine.") }
+                if !plan.targetVoices.isEmpty {
+                    candidates = candidates.filter { c in
+                        voices.enumerated().allSatisfy { v, voice in
+                            voice == .soprano || plan.targetVoices.contains(voice) || oldGroups[voice]?[index].first(where: { $0.pitch != nil })?.pitch == c.pitches[v]
+                        }
+                    }
+                    guard !candidates.isEmpty else { throw HymnError.invalid("No harmony fits while keeping the unrequested voices unchanged. Nothing was applied.") }
+                }
                 if !plan.chordDegrees.isEmpty, plan.chordDegrees[index] > 0 {
                     let desired = plan.chordDegrees[index]
                     // Soft preference: never override hard range, crossing, or chord-completeness constraints.
@@ -140,11 +108,21 @@ public enum Harmonizer {
         }
         guard let best = beam.min(by: { $0.cost < $1.cost }) else { throw HymnError.invalid("No arrangement was found.") }
         var result = source
-        result.profile.simplicity = plan.simplicity
+        if plan.targetVoices.isEmpty && plan.measureStart == 0 { result.profile.simplicity = plan.simplicity }
         result.parts = voices.enumerated().map { v, voice in
-            Part(voice: voice, notes: tune.melody.enumerated().map { i, n in
-                var copy = n; copy.pitch = n.pitch == nil ? nil : best.frames[i][v]; return copy
-            })
+            var part = oldParts.first { $0.voice == voice } ?? Part(voice: voice, notes: tune.melody)
+            part.notes = tune.melody.enumerated().flatMap { i, n -> [Note] in
+                let existing = oldGroups[voice]?[i] ?? [n]
+                let measure = tune.measure(at: starts[i])
+                let outside = plan.measureStart > 0 && !(plan.measureStart...plan.measureEnd).contains(measure)
+                if voice == .soprano || outside || (!plan.targetVoices.isEmpty && !plan.targetVoices.contains(voice)) { return existing }
+                return existing.map { segment in
+                    var copy = segment
+                    copy.pitch = segment.pitch == nil ? nil : best.frames[i][v]
+                    return copy
+                }
+            }
+            return part
         }
         result.origin = plan.summary
         let errors = Validator.inspect(result).filter { $0.severity == .error }

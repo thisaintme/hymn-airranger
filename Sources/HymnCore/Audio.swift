@@ -25,7 +25,7 @@ public struct RenderedAudio: Sendable {
 public enum Synthesizer {
     /// A deterministic, sample-free, piano-like practice tone. This is not a sampled concert piano.
     public static func render(_ score: Score, mix: PracticeMix = .init(), speed: Double = 1, startTick: Int = 0, endTick: Int? = nil, countIn: Bool = true, sampleRate: Int = 22050) throws -> RenderedAudio {
-        try score.tune.validated()
+        try score.tune.validated(); try PartTiming.validate(score)
         guard [22050,44100].contains(sampleRate), speed.isFinite, (0.5...1.5).contains(speed), mix.gains.values.allSatisfy({ $0.isFinite && (0...1).contains($0) }) else { throw HymnError.invalid("Unsupported playback settings.") }
         let t = score.tune, end = endTick ?? t.totalTicks
         guard startTick >= 0, end > startTick, end <= t.totalTicks else { throw HymnError.invalid("Choose a valid playback passage.") }
@@ -33,7 +33,6 @@ public enum Synthesizer {
         let lead = countIn ? Double(t.barTicks) * secondsPerTick : 0
         let duration = Double(end - startTick) * secondsPerTick + lead + 0.25
         var samples = [Double](repeating: 0, count: Int(ceil(duration * Double(sampleRate))))
-        let starts = t.noteStarts
         func addTone(pitch: Int, at start: Double, duration: Double, gain: Double, click: Bool = false) {
             guard gain > 0 else { return }
             let frequency = 440.0 * pow(2.0, Double(pitch-69)/12.0)
@@ -55,14 +54,14 @@ public enum Synthesizer {
             for beat in 0..<t.beats { addTone(pitch: beat == 0 ? 84 : 79, at: Double(beat)*secondsPerBeat, duration: 0.06, gain: 0.7, click: true) }
         }
         for part in score.effectiveParts {
-            guard part.notes.count == starts.count else { throw HymnError.invalid("Cannot play mismatched voices.") }
+            let starts = part.noteStarts
             let gain = mix.gains[part.voice] ?? 0
             for (i,note) in part.notes.enumerated() {
                 try Task.checkCancellation()
                 guard let pitch = note.pitch else { continue }
                 let begin = max(starts[i], startTick), finish = min(starts[i]+note.ticks,end)
                 guard finish > begin else { continue }
-                addTone(pitch: pitch, at: lead + Double(begin-startTick)*secondsPerTick, duration: Double(finish-begin)*secondsPerTick*0.97, gain: gain)
+                addTone(pitch: pitch, at: lead + Double(begin-startTick)*secondsPerTick, duration: Double(finish-begin)*secondsPerTick*0.97, gain: gain * part.dynamic(at: begin).gain)
             }
         }
         return .init(samples: samples.map { Int16(max(-32767, min(32767, Int(($0 * 30000).rounded())))) }, sampleRate: sampleRate, countInSeconds: lead)
@@ -131,5 +130,20 @@ public enum MelodyTranscriber {
         }
         try tune.validated()
         return .init(tune: tune, warnings: ["Experimental transcription: listen to every phrase before confirming.", "Choose the correct key, meter, pickup, and tempo. Repeated notes, vibrato, note endings, and rhythm may need manual correction. No confidence score guarantees accuracy."])
+    }
+}
+
+/// The large practice word follows the uniquely emphasized/soloed voice, not
+/// the soprano's earlier entrance. Full-choir mixes follow the source melody.
+public enum PracticeLyrics {
+    public static func current(score: Score, mix: PracticeMix, tick: Double) -> String? {
+        guard tick.isFinite, tick >= 0, tick < Double(score.tune.totalTicks) else { return nil }
+        let parts = score.effectiveParts
+        let maximum = parts.map { mix.gains[$0.voice] ?? 0 }.max() ?? 0
+        guard maximum > 0 else { return nil }
+        let highlighted = parts.filter { (mix.gains[$0.voice] ?? 0) == maximum }
+        let part = highlighted.count == 1 ? highlighted[0] : parts.first { $0.voice == .soprano }
+        guard let part, let i = part.noteStarts.lastIndex(where: { Double($0) <= tick }), part.notes[i].pitch != nil else { return nil }
+        return part.notes.prefix(i+1).last(where: { $0.anchorID == part.notes[i].anchorID && !$0.lyrics.isEmpty })?.lyrics.first?.text
     }
 }

@@ -159,9 +159,8 @@ struct TransportBar: View {
         }.padding(.horizontal,20).padding(.vertical,16).background(.background)
     }
     private var currentLyric: String? {
-        let tune = model.displayedScore.tune
-        guard player.isPlaying, let index = tune.noteStarts.lastIndex(where: { Double($0) <= player.tick }) else { return nil }
-        return tune.melody[index].lyrics.first?.text
+        guard player.isPlaying else { return nil }
+        return PracticeLyrics.current(score: model.displayedScore, mix: model.mix, tick: player.tick)
     }
 }
 
@@ -207,8 +206,8 @@ struct InspectorView: View {
         VStack(alignment:.leading,spacing:14) {
             HStack { Image(systemName:"sparkles").foregroundStyle(.tint); Text("Arrange for real singers").font(.headline) }
             Text("The melody stays yours. We shape the supporting voices around it.").font(.callout).foregroundStyle(.secondary).lineSpacing(3)
-            if model.previousArrangementID != nil {
-                Text(model.score.origin).font(.callout).lineLimit(4)
+            if !model.assistantReply.isEmpty {
+                Text(model.assistantReply).font(.callout).textSelection(.enabled)
                     .padding(12).frame(maxWidth:.infinity,alignment:.leading)
                     .background(Color.accentColor.opacity(0.07),in:RoundedRectangle(cornerRadius:9))
             }
@@ -224,7 +223,11 @@ struct InspectorView: View {
                 Spacer()
                 Button { model.propose(request,usingAI:true); request = "" } label: { Label("Apply change",systemImage:"arrow.up") }.buttonStyle(.borderedProminent).disabled(request.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty || model.busy)
             }
-            Button("Make the alto and tenor easier") { request = "Make the alto and tenor movement simpler, without changing the melody." }.buttonStyle(.link).font(.caption)
+            Button("Make the supporting voices easier") { request = "Make the supporting voice movement simpler, without changing the melody." }.buttonStyle(.link).font(.caption)
+            if model.score.profile.voicing == .satb {
+                Button("A few tenor syncopations") { request = "Add a few offbeat entries to the tenor part, keeping all pitches and other voices unchanged." }.buttonStyle(.link).font(.caption)
+            }
+            Button("Export prompt log…") { model.exportPromptLog() }.buttonStyle(.link).font(.caption)
             Button("A more settled final phrase") { request = "Use a simple, settled cadence in the final phrase. Keep the melody unchanged." }.buttonStyle(.link).font(.caption)
             Divider()
             HStack {
@@ -236,7 +239,7 @@ struct InspectorView: View {
             musicalChecks
             Spacer(minLength:0)
             Button { model.approve() } label: { Label("Approve rehearsal version",systemImage:"checkmark.seal").frame(maxWidth:.infinity) }.disabled(model.busy)
-            Text("Alpha limits: simple chord-based, same-rhythm parts. AI chat cannot yet rewrite rhythms, add an accompaniment, or understand arbitrary notation edits.").font(.caption2).foregroundStyle(.secondary)
+            Text("Supports harmony, supporting-voice offbeat/repeated entries, and p/mp/mf/f loudness spans. Melody rhythm stays locked. Tuplets, continuous hairpins, new accompaniment and arbitrary counterpoint are not supported. Request one kind of change at a time.").font(.caption2).foregroundStyle(.secondary)
         }
     }
     private var musicalChecks: some View {
@@ -264,6 +267,7 @@ struct InspectorView: View {
                     }
                 }
             }
+            Button("Export prompt log…") { model.exportPromptLog() }
             Button("Save a portable project copy…") { model.saveCopy() }
         }
     }

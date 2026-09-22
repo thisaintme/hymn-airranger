@@ -17,6 +17,8 @@ enum AppSheet: String, Identifiable { case importSong, melody, lyrics, choir, so
     @Published var sheet: AppSheet?
     @Published var errorMessage = ""
     @Published var status = "Ready"
+    @Published var assistantReply = ""
+    @Published private(set) var promptHistory: [PromptRecord] = []
     @Published var busy = false
     @Published private(set) var arrangementProgress: ArrangementProgress?
     @Published var previousArrangementID: UUID?
@@ -37,6 +39,8 @@ enum AppSheet: String, Identifiable { case importSong, melody, lyrics, choir, so
     private let folder: URL
     private(set) var operation: Task<Void,Never>?
     private var arrangementToken: UUID?
+    private var activePromptID: UUID?
+    private var promptHistoryProjectID: UUID?
     private let services: AppServices
     private let defaults: UserDefaults
     var score: Score { project.current.score }
@@ -67,7 +71,7 @@ enum AppSheet: String, Identifiable { case importSong, melody, lyrics, choir, so
             self?.selectedNote = note
             if let pitch = note.pitch { self?.player.stop(); self?.player.audition(pitch) }
         }
-        refreshLibrary(); refreshScore()
+        reloadPromptHistory(); refreshLibrary(); refreshScore()
     }
     func refreshScore() { scoreView.render(displayedScore,stamp:stamp,only:workspace == .print ? exportVoice : nil) }
     func persist() {
@@ -87,7 +91,7 @@ enum AppSheet: String, Identifiable { case importSong, melody, lyrics, choir, so
     }
     func open(_ url: URL) {
         guard !busy else { return }
-        do { let p = try Project.load(Data(contentsOf:url)); persist(); player.stop(); project = p; resetSelection(); persist(); refreshScore() }
+        do { let p = try Project.load(Data(contentsOf:url)); persist(); player.stop(); project = p; reloadPromptHistory(); resetSelection(); persist(); refreshScore() }
         catch { errorMessage = error.localizedDescription }
     }
     func openPanel() {
@@ -101,7 +105,7 @@ enum AppSheet: String, Identifiable { case importSong, melody, lyrics, choir, so
     }
     func newDemo() {
         guard !busy else { return }; persist()
-        do { player.stop(); project = try Demo.project(); resetSelection(); persist(); refreshScore() }
+        do { player.stop(); project = try Demo.project(); reloadPromptHistory(); resetSelection(); persist(); refreshScore() }
         catch { errorMessage = error.localizedDescription }
     }
     private func resetSelection() { previousArrangementID = nil; selectedNote = nil; exportVoice = nil; passageStart = 1; passageEnd = max(1,score.tune.measureCount); usePassage = false }
@@ -121,8 +125,7 @@ enum AppSheet: String, Identifiable { case importSong, melody, lyrics, choir, so
     func applyLyrics(_ text: String) {
         guard !busy else { return }
         do {
-            var s = score; s.tune = try Lyrics.apply(text,to:s.tune)
-            for p in s.parts.indices { for n in s.parts[p].notes.indices { s.parts[p].notes[n].lyrics = s.tune.melody[n].lyrics } }
+            let s = try PartTiming.updateLyrics(in: score, text: text)
             commit(s,label:"Lyrics underlay updated"); sheet = nil
         } catch { errorMessage = error.localizedDescription }
     }
@@ -161,6 +164,18 @@ enum AppSheet: String, Identifiable { case importSong, melody, lyrics, choir, so
         guard !busy else { return }
         guard score.melodyConfirmed else { sheet = .melody; return }
         if usingAI && !cloudEnabled { errorMessage = "Enable cloud AI and add your API key in Settings. The local draft does not use AI."; return }
+        guard !request.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, request.count <= 8000 else {
+            errorMessage = "Enter a request of at most 8,000 characters."; return
+        }
+        if promptHistoryProjectID != project.id { reloadPromptHistory() }
+        let record = PromptRecord(request: request, model: usingAI ? modelID : nil, sourceRevisionID: project.currentID)
+        promptHistory.append(record); savePromptHistory()
+        if let reason = RequestSafety.preflight(request, score: score) {
+            finishPrompt(record.id, outcome: .unsupported, message: reason)
+            assistantReply = reason; status = "No changes applied"; return
+        }
+        assistantReply = ""
+        activePromptID = record.id
         let snapshot = score, sourceID = project.currentID, projectID = project.id
         let key = usingAI ? services.loadAPIKey() : "", model = modelID
         let token = UUID()
@@ -178,6 +193,7 @@ enum AppSheet: String, Identifiable { case importSong, melody, lyrics, choir, so
                     arrangementProgress = nil
                     busy = false
                     operation = nil
+                    activePromptID = nil
                 }
             }
             do {
@@ -190,8 +206,20 @@ enum AppSheet: String, Identifiable { case importSong, melody, lyrics, choir, so
                 }
                 try Task.checkCancellation()
                 guard arrangementToken == token else { return }
+                guard project.id == projectID, project.currentID == sourceID else {
+                    throw HymnError.invalid("The project changed while the request was running. Nothing was applied.")
+                }
+                updatePromptPlan(record.id, plan: plan)
+                try RequestSafety.validate(plan, request: request, score: snapshot)
+                if !plan.action.changesScore {
+                    let outcome: PromptOutcome = plan.action == .unsupported ? .unsupported : (plan.action == .clarify ? .clarification : .unchanged)
+                    assistantReply = plan.summary
+                    status = "No changes applied"
+                    finishPrompt(record.id, outcome: outcome, message: plan.summary)
+                    return
+                }
                 setArrangementProgress(.harmonizing)
-                let proposed = try await services.arrange(snapshot, plan)
+                var proposed = try await services.arrange(snapshot, plan)
                 try Task.checkCancellation()
                 guard arrangementToken == token else { return }
                 guard project.id == projectID, project.currentID == sourceID else {
@@ -204,22 +232,105 @@ enum AppSheet: String, Identifiable { case importSong, melody, lyrics, choir, so
                 guard failures.isEmpty, !proposed.parts.isEmpty else {
                     throw HymnError.invalid("The arrangement did not pass the musical checks. Nothing was applied.")
                 }
+                let changes = try ScoreChangeReport.compare(snapshot, proposed)
+                if usingAI && !changes.changed {
+                    assistantReply = changes.summary
+                    status = "No musical changes; version preserved"
+                    finishPrompt(record.id, outcome: .unchanged, message: changes.summary, changes: changes)
+                    return
+                }
+                try verifyEditScope(plan: plan, before: snapshot, after: proposed)
+                proposed.origin = changes.summary
                 setArrangementProgress(.saving)
                 // A completed arrangement is an editable draft, not a blocking
                 // proposal. Approval stays on its original revision, if any.
-                commit(proposed, label: proposed.origin, request: request)
+                let title = plan.action == .rhythm ? "Supporting rhythm updated" : (plan.action == .dynamics ? "Dynamics updated" : "Harmony draft")
+                commit(proposed, label: title, request: request)
                 previousArrangementID = sourceID
+                assistantReply = changes.summary + "\n\nAI plan: " + plan.summary
+                finishPrompt(record.id, outcome: .applied, message: changes.summary, changes: changes, resultID: project.currentID)
                 status = "Arrangement ready — continue editing, or restore the previous version."
             } catch {
                 guard arrangementToken == token else { return }
                 if Task.isCancelled || error is CancellationError || (error as? URLError)?.code == .cancelled {
                     status = "Cancelled; score unchanged"
+                    finishPrompt(record.id, outcome: .cancelled, message: status)
                 } else {
                     status = "Arrangement failed; score unchanged. You can try again."
+                    assistantReply = error.localizedDescription
+                    finishPrompt(record.id, outcome: .failed, message: error.localizedDescription)
                     errorMessage = error.localizedDescription
                 }
             }
         }
+    }
+    private func verifyEditScope(plan: HarmonyPlan, before: Score, after: Score) throws {
+        if !plan.targetVoices.isEmpty {
+            for part in before.parts where !plan.targetVoices.contains(part.voice) {
+                guard after.parts.first(where: { $0.voice == part.voice }) == part else { throw HymnError.invalid("An unrequested voice was changed. Nothing was applied.") }
+            }
+        }
+        if plan.action == .rhythm || plan.action == .dynamics {
+            guard before.profile == after.profile else { throw HymnError.invalid("Expression editing changed choir settings unexpectedly.") }
+            for part in before.parts {
+                guard let new = after.parts.first(where: { $0.voice == part.voice }) else { throw HymnError.invalid("An expression edit removed a voice.") }
+                if plan.action == .dynamics {
+                    guard new.notes == part.notes else { throw HymnError.invalid("A loudness edit changed notes unexpectedly.") }
+                } else {
+                    let a = try PartTiming.groups(part, tune: before.tune)
+                    let b = try PartTiming.groups(new, tune: after.tune)
+                    guard a.map({ $0.first(where: { $0.pitch != nil })?.pitch }) == b.map({ $0.first(where: { $0.pitch != nil })?.pitch }),
+                          new.dynamics == part.dynamics else { throw HymnError.invalid("A rhythm edit changed pitch or dynamics unexpectedly.") }
+                }
+            }
+        }
+    }
+    private var promptLogURL: URL { folder.appendingPathComponent((promptHistoryProjectID ?? project.id).uuidString + ".requests.json") }
+    private func reloadPromptHistory() {
+        promptHistoryProjectID = project.id
+        assistantReply = ""; promptHistory = []
+        guard let data = try? Data(contentsOf: promptLogURL), data.count <= 10_000_000 else { return }
+        let decoder = JSONDecoder()
+        guard let records = try? decoder.decode([PromptRecord].self, from: data) else { return }
+        promptHistory = Array(records.suffix(500))
+        for i in promptHistory.indices where promptHistory[i].outcome == .running {
+            promptHistory[i].outcome = .interrupted
+            promptHistory[i].message = "The app closed before this request's result was recorded."
+        }
+        savePromptHistory()
+    }
+    private func savePromptHistory() {
+        let encoder = JSONEncoder()
+        promptHistory = Array(promptHistory.suffix(500))
+        do {
+            var data = try encoder.encode(promptHistory)
+            while data.count > 5_000_000 && promptHistory.count > 1 {
+                promptHistory.removeFirst(); data = try encoder.encode(promptHistory)
+            }
+            try data.write(to: promptLogURL, options: .atomic)
+        } catch { errorMessage = "The request log could not be saved: " + error.localizedDescription }
+    }
+    private func updatePromptPlan(_ id: UUID, plan: HarmonyPlan) {
+        guard let i = promptHistory.firstIndex(where: { $0.id == id }) else { return }
+        promptHistory[i].plan = plan; savePromptHistory()
+    }
+    private func finishPrompt(_ id: UUID, outcome: PromptOutcome, message: String, changes: ScoreChangeReport? = nil, resultID: UUID? = nil) {
+        guard let i = promptHistory.firstIndex(where: { $0.id == id }) else { return }
+        promptHistory[i].outcome = outcome; promptHistory[i].message = String(message.prefix(4000))
+        promptHistory[i].changes = changes; promptHistory[i].resultRevisionID = resultID
+        savePromptHistory()
+    }
+    func promptLogData() throws -> Data {
+        try PromptLogExport.make(project: project, records: promptHistoryProjectID == project.id ? promptHistory : [],
+                                 appVersion: Bundle.main.infoDictionary?["HymnAIrrangerRelease"] as? String ?? "0.1.0-alpha.3").data()
+    }
+    func exportPromptLog() {
+        let panel = NSSavePanel(); panel.allowedContentTypes = [.json]
+        panel.nameFieldStringValue = "Hymn-AIrranger-prompt-log.json"
+        panel.message = "Includes prompt/response text and measured changes, not attachments or the Settings key. Review the text before sharing."
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do { try promptLogData().write(to: url, options: .atomic); status = "Prompt log exported" }
+        catch { errorMessage = error.localizedDescription }
     }
     private func setArrangementProgress(_ progress: ArrangementProgress) {
         arrangementProgress = progress
@@ -228,6 +339,8 @@ enum AppSheet: String, Identifiable { case importSong, melody, lyrics, choir, so
     func cancelOperation() {
         operation?.cancel()
         if arrangementToken != nil {
+            if let id = activePromptID { finishPrompt(id, outcome: .cancelled, message: "Cancelled; score unchanged") }
+            activePromptID = nil
             // Unlock immediately. Cancellation checks and the token guard prevent
             // late network/worker results from changing this or a newer score.
             arrangementToken = nil
@@ -264,7 +377,7 @@ enum AppSheet: String, Identifiable { case importSong, melody, lyrics, choir, so
         let profile = score.profile
         project = Project(score:Score(tune:tune,profile:profile,melodyConfirmed:false,origin:origin))
         if let source { project.sources = [source] }
-        resetSelection(); persist(); refreshScore(); status = "Check the imported melody before arranging"; sheet = .melody
+        reloadPromptHistory(); resetSelection(); persist(); refreshScore(); status = "Check the imported melody before arranging"; sheet = .melody
     }
     func importPDF(_ data: Data, filename: String) {
         guard !busy else { return }

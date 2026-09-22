@@ -1,12 +1,12 @@
 'use strict';
 (() => {
-  let toolkit, events = [], active = [], page = null;
+  let toolkit, events = [], active = [], activeLyrics = [], page = null;
   function ready() {
     toolkit = new verovio.toolkit();
     window.Hymn = {
       render(payload) {
         try {
-          events = payload.events; active = []; page = null;
+          events = payload.events; active = []; activeLyrics = []; page = null;
           toolkit.setOptions({pageWidth:2100,pageHeight:2970,pageMarginTop:120,pageMarginBottom:140,pageMarginLeft:130,pageMarginRight:110,scale:40,adjustPageHeight:false,breaks:'auto',spacingStaff:12,spacingSystem:14,lyricSize:5,header:'auto',footer:'none',svgViewBox:true});
           if (!toolkit.loadData(payload.mei)) throw new Error('The engraving engine rejected the score.');
           const host = document.getElementById('pages'); host.replaceChildren();
@@ -25,7 +25,12 @@
       },
       highlight(tick) {
         active.forEach(id => document.getElementById(id)?.classList.remove('playing'));
-        active = events.filter(e => e.pitch != null && tick >= e.tick && tick < e.tick+e.ticks).map(e => e.id);
+        activeLyrics.forEach(node => node.classList.remove('playing-lyric'));
+        const sounding = events.filter(e => e.pitch != null && tick >= e.tick && tick < e.tick+e.ticks);
+        active = sounding.map(e => e.id);
+        const owners = [...new Set(sounding.map(e => e.lyricOwnerID).filter(Boolean))];
+        activeLyrics = owners.flatMap(id => [...(document.getElementById(id)?.querySelectorAll('.syl') || [])]);
+        activeLyrics.forEach(node => node.classList.add('playing-lyric'));
         active.forEach(id => document.getElementById(id)?.classList.add('playing'));
         const next = active.length ? document.getElementById(active[0])?.closest('.paper') : null;
         if (next && next !== page) { page = next; next.scrollIntoView({behavior:'smooth',block:'start'}); }

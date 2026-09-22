@@ -29,6 +29,14 @@ jobs:
         run: bash Scripts/prepare-resources.sh
       - name: Test shared music engine and compile native target
         run: swift test
+      - name: Upload engraving and audio smoke-test evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: rhythm-integration-evidence
+          path: .build/SmokeArtifacts/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
       - name: Compile native app
         run: swift build -c release --product HymnAIrranger
       - name: Package app and verify the extracted archive
@@ -88,13 +96,16 @@ jobs:
             exit 0
           fi
           cat > release-notes.md <<EOF
+          ## What's changed
+          Explicit no-change/unsupported handling; missing-voice checks; bounded independent supporting rhythms; p/mp/mf/f loudness spans; measured change reports; and an Export prompt log action. Source melody remains locked. Expression-edited projects use format 2 (alpha 3+); back up older projects before updating. See Docs/Alpha 3 fixes.md for limitations.
+
           ## Download and test
           Download **Hymn-AIrranger-macOS-arm64.zip** below, extract it, and move **Hymn AIrranger.app** to Applications.
           Requires **Apple Silicon and macOS 14 or later**. No Xcode, build tools, server, or API key is needed to try the original study.
 
           **Development alpha: ad-hoc signed, NOT Apple-notarized.** Read INSTALL.md before opening. Do not disable Gatekeeper globally. This is not a choir-ready production release.
 
-          Build and 18 core tests passed on the macOS runner. Packaging verifies resources, architecture, and the app signature before and after ZIP extraction. Interactive music rendering, playback, PDF/MP3 export, microphone, and live AI still need manual acceptance testing.
+          The native build and automated core/app/integration tests passed on the macOS runner. Packaging verifies resources, architecture, and the app signature before and after ZIP extraction. WebKit engraving, A4 PDF export, and native MP3 encoding/decoding have automated smoke coverage on the original study. Human listening, real repertoire, device playback, microphone and live-model behavior still need acceptance testing.
 
           Source commit: $GITHUB_SHA
           Build: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID

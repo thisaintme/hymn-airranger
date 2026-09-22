@@ -33,7 +33,7 @@ enum ArrangementProgress: Equatable {
 
     var title: String {
         switch self {
-        case .requestingAI: return "AI is planning the harmony…"
+        case .requestingAI: return "AI is interpreting your musical request…"
         case .harmonizing: return "Arranging and checking the voices…"
         case .saving: return "Saving your new draft…"
         }

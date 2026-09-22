@@ -62,6 +62,9 @@ public struct Note: Codable, Equatable, Identifiable, Sendable {
     public var pitch: Int?
     public var ticks: Int
     public var lyrics: [Lyric]
+    // Supporting-voice segments retain the verified melody event they belong to.
+    public var sourceID: String?
+    public var anchorID: String { sourceID ?? id }
     public init(pitch: Int?, ticks: Int = 480, lyrics: [Lyric] = [], id: String = "n" + UUID().uuidString.replacingOccurrences(of: "-", with: "")) {
         self.id = id; self.pitch = pitch; self.ticks = ticks; self.lyrics = lyrics
     }
@@ -126,6 +129,14 @@ public struct Tune: Codable, Equatable, Sendable {
 public struct Part: Codable, Equatable, Sendable {
     public var voice: Voice
     public var notes: [Note]
+    public var dynamics: [DynamicMark]?
+    public var noteStarts: [Int] {
+        var tick = 0
+        return notes.map { note in defer { tick += note.ticks }; return tick }
+    }
+    public func dynamic(at tick: Int) -> DynamicLevel {
+        dynamics?.last(where: { $0.tick <= tick })?.level ?? .mf
+    }
     public init(voice: Voice, notes: [Note]) { self.voice = voice; self.notes = notes }
 }
 public struct Score: Codable, Equatable, Sendable {
@@ -137,6 +148,7 @@ public struct Score: Codable, Equatable, Sendable {
     public init(tune: Tune, profile: ChoirProfile = .init(), parts: [Part] = [], melodyConfirmed: Bool = false, origin: String = "Imported melody") {
         self.tune = tune; self.profile = profile; self.parts = parts; self.melodyConfirmed = melodyConfirmed; self.origin = origin
     }
+    public var requiresVersion2: Bool { parts.contains { !($0.dynamics ?? []).isEmpty || $0.notes.contains { $0.sourceID != nil } } }
     public var effectiveParts: [Part] { parts.isEmpty ? [Part(voice: .soprano, notes: tune.melody)] : parts }
 }
 public struct Revision: Codable, Equatable, Identifiable, Sendable {
@@ -166,11 +178,13 @@ public struct Project: Codable, Equatable, Sendable {
     public init(score: Score) {
         let first = Revision(score: score, label: "Starting point")
         revisions = [first]; currentID = first.id
+        if score.requiresVersion2 { schemaVersion = 2 }
     }
     public var current: Revision { revisions.first { $0.id == currentID }! }
     public mutating func commit(_ score: Score, label: String, request: String = "") {
         let revision = Revision(score: score, parentID: currentID, label: label, request: request)
         revisions.append(revision); currentID = revision.id
+        if score.requiresVersion2 { schemaVersion = 2 }
     }
     public mutating func checkout(_ id: UUID) throws {
         guard revisions.contains(where: { $0.id == id }) else { throw HymnError.invalid("That version is missing.") }
@@ -178,10 +192,11 @@ public struct Project: Codable, Equatable, Sendable {
     }
     public func validated() throws {
         guard sources.reduce(0, { $0 + $1.data.count }) <= 25_000_000 else { throw HymnError.invalid("Source attachments exceed 25 MB.") }
-        guard schemaVersion == 1 else { throw HymnError.invalid("This project uses a newer or unsupported file format.") }
+        guard [1, 2].contains(schemaVersion) else { throw HymnError.invalid("This project uses a newer or unsupported file format.") }
         guard !revisions.isEmpty, revisions.count <= 2000, Set(revisions.map(\.id)).count == revisions.count,
               revisions.contains(where: { $0.id == currentID }),
               approvedID == nil || revisions.contains(where: { $0.id == approvedID }) else { throw HymnError.invalid("The project's version history is damaged.") }
+        guard schemaVersion >= 2 || !revisions.contains(where: { $0.score.requiresVersion2 }) else { throw HymnError.invalid("Independent rhythms require project format 2.") }
         var seen = Set<UUID>()
         for revision in revisions {
             guard revision.parentID == nil || seen.contains(revision.parentID!) else { throw HymnError.invalid("The version history has a missing or circular parent.") }

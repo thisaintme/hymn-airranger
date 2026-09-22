@@ -15,7 +15,8 @@ enum AppResources {
         } else {
             // Keep swift run and Xcode's bare-executable workflow usable too.
             locations = [application.resourceURL, application.bundleURL,
-                         application.executableURL?.deletingLastPathComponent()]
+                         application.executableURL?.deletingLastPathComponent(),
+                         application.bundleURL.deletingLastPathComponent()]
         }
         for location in locations.compactMap({ $0 }) {
             let url = location.appendingPathComponent(bundleName, isDirectory: true)
