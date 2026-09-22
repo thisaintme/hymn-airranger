@@ -1,0 +1,13 @@
+from pathlib import Path
+p=Path('Sources/HymnAIrranger/Editors.swift')
+s=p.read_text()
+s=s.replace('Text(title).font(.system(size:27,weight:.semibold,design:.serif)); Text(subtitle)', 'Text(title).font(.system(size:27,weight:.semibold,design:.serif)).textSelection(.enabled); Text(subtitle)')
+s=s.replace('Text(model.status).font(.callout); Button("Cancel operation")', 'Text(model.status).font(.callout).textSelection(.enabled); Button("Cancel operation")')
+p.write_text(s)
+p=Path('Sources/HymnAIrranger/AppPresentation.swift')
+s=p.read_text().replace('Text("Transcription ready for review").font(.headline)', 'Text("Transcription ready for review").font(.headline).textSelection(.enabled)')
+p.write_text(s)
+p=Path('Tests/HymnAppTests/ImportPresentationTests.swift')
+s=p.read_text().replace('visibleText(window).contains("Continue review")', 'visibleText(window).contains("Transcription ready for review")')
+s=s.replace('        XCTAssertTrue(banner, visibleText(window))', '        XCTAssertTrue(banner, visibleText(window))\n        try saveEvidence(window, name: "Import-handoff-pending-review")')
+p.write_text(s)
