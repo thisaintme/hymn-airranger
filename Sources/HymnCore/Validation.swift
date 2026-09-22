@@ -2,6 +2,7 @@ import Foundation
 
 public enum Validator {
     public static func inspect(_ score: Score) -> [ScoreIssue] {
+        if score.isImportedArrangement { return RehearsalValidation.inspect(score) }
         var issues: [ScoreIssue] = []
         func add(_ severity: Severity, _ measure: Int, _ message: String) { issues.append(.init(severity: severity, measure: measure, message: message)) }
         let tune = score.tune, parts = score.effectiveParts

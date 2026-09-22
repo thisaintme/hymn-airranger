@@ -9,6 +9,10 @@ struct AppServices {
     var loadAPIKey: () -> String
     var saveAPIKey: (String) throws -> Void
 
+    var readChoirPDF: @Sendable (Data, String, String, String) async throws -> ChoirPDFExtraction = { data, filename, key, model in
+        try await AIClient(apiKey: key, model: model).readChoirPDF(data, filename: filename)
+    }
+
     static let live = AppServices(
         harmonyPlan: { score, request, key, model in
             try await AIClient(apiKey: key, model: model).harmony(score: score, request: request)
@@ -29,10 +33,11 @@ struct AppServices {
 }
 
 enum ArrangementProgress: Equatable {
-    case requestingAI, harmonizing, saving
+    case requestingAI, harmonizing, saving, readingChoir
 
     var title: String {
         switch self {
+        case .readingChoir: return "Reading the existing vocal parts…"
         case .requestingAI: return "AI is interpreting your musical request…"
         case .harmonizing: return "Arranging and checking the voices…"
         case .saving: return "Saving your new draft…"

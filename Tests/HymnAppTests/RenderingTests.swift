@@ -76,4 +76,34 @@ final class RenderingTests: XCTestCase {
         let channel = try XCTUnwrap(buffer.floatChannelData?[0])
         XCTAssertTrue((0..<Int(buffer.frameLength)).contains { abs(channel[$0]) > 0.001 })
     }
+    @MainActor func testImportedArrangementEngravesAndExportsWithoutArranging() async throws {
+        _ = NSApplication.shared
+        let source = try score()
+        let imported = try ChoirMusicXML.read(Data(Notation.musicXML(source).utf8)).score(profile: source.profile, reviewed: true)
+        XCTAssertTrue(imported.isImportedArrangement)
+        let controller = ScoreController(), configuration = WKWebViewConfiguration()
+        configuration.userContentController.add(controller, name: "hymn")
+        let web = WKWebView(frame: CGRect(x: 0, y: 0, width: 840, height: 1180), configuration: configuration)
+        defer { web.stopLoading(); web.navigationDelegate = nil; configuration.userContentController.removeScriptMessageHandler(forName: "hymn") }
+        web.navigationDelegate = controller; controller.attach(web)
+        let url = try XCTUnwrap(try resources().url(forResource: "index", withExtension: "html", subdirectory: "Web"))
+        web.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
+        controller.render(imported, stamp: "IMPORTED TRANSCRIPTION — integration study")
+        for _ in 0..<600 {
+            if controller.pageCount > 0 || !controller.error.isEmpty { break }
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
+        XCTAssertTrue(controller.error.isEmpty, controller.error)
+        XCTAssertGreaterThan(controller.pageCount, 0)
+        let pdf = try await controller.exportPDF()
+        XCTAssertGreaterThan(try XCTUnwrap(PDFDocument(data: pdf)).pageCount, 0)
+        try pdf.write(to: try evidenceFolder().appendingPathComponent("Imported-arrangement.pdf"))
+        let audio = try Synthesizer.render(imported, mix: .solo(.tenor), countIn: false)
+        let mp3 = try MP3Encoder.encode(audio, resourceBundle: try resources())
+        let destination = try evidenceFolder().appendingPathComponent("Imported-tenor.mp3")
+        try mp3.write(to: destination)
+        let file = try AVAudioFile(forReading: destination)
+        XCTAssertEqual(Double(file.length) / file.processingFormat.sampleRate, audio.seconds, accuracy: 0.2)
+    }
+
 }

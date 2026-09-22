@@ -108,6 +108,7 @@ public enum PartTiming {
         guard failures.isEmpty else { throw HymnError.invalid(failures.map(\.message).joined(separator: "\n")) }
     }
     public static func updateLyrics(in score: Score, text: String) throws -> Score {
+        guard !score.isImportedArrangement else { throw HymnError.invalid("Edit each imported voice in transcription review; their lyrics need not share the melody timing.") }
         var result = score; result.tune = try Lyrics.apply(text, to: score.tune)
         for p in result.parts.indices {
             let old = try groups(score.parts[p], tune: score.tune)
@@ -125,6 +126,7 @@ public enum PartTiming {
 
 public enum ExpressiveEditor {
     public static func apply(_ source: Score, plan: HarmonyPlan) throws -> Score {
+        guard !source.isImportedArrangement else { throw HymnError.invalid("Imported arrangements are preserved. Correct transcription in the review screen.") }
         try plan.validateOperations(for: source)
         guard plan.action.changesScore else { return source }
         guard plan.action != .harmonize, !source.parts.isEmpty else { throw HymnError.invalid("Create a full arrangement before expression editing.") }

@@ -21,6 +21,8 @@ struct HymnAIrrangerApp: App {
                     case .lyrics: LyricsEditor(model:model)
                     case .choir: ChoirEditor(model:model)
                     case .source: SourceView(model:model)
+                    case .reviewArrangement:
+                        if let draft = model.pendingChoirImport { ChoirReviewView(model: model, draft: draft) }
                     }
                 }
         }

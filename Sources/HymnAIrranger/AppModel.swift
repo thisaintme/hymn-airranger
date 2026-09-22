@@ -8,9 +8,13 @@ struct LibraryItem: Identifiable {
     var id: UUID; var title: String; var modified: Date; var url: URL; var voicing: String
 }
 enum Workspace: String, CaseIterable, Identifiable { case arrange = "Arrange", practice = "Practice", print = "Print"; var id: String { rawValue } }
-enum AppSheet: String, Identifiable { case importSong, melody, lyrics, choir, source; var id: String { rawValue } }
+enum AppSheet: String, Identifiable { case importSong, melody, lyrics, choir, source, reviewArrangement; var id: String { rawValue } }
 
 @MainActor final class AppModel: ObservableObject {
+    @Published var pendingChoirImport: ChoirImportDraft?
+    @Published var showOriginalPDF = false
+    var choirImportContext: ChoirImportContext?
+    var choirImportToken: UUID?
     @Published var project: Project
     @Published var library: [LibraryItem] = []
     @Published var workspace: Workspace = .arrange
@@ -36,13 +40,13 @@ enum AppSheet: String, Identifiable { case importSong, melody, lyrics, choir, so
     @Published var modelID: String
     let player = PracticePlayer()
     let scoreView = ScoreController()
-    private let folder: URL
-    private(set) var operation: Task<Void,Never>?
+    let folder: URL
+    var operation: Task<Void,Never>?
     private var arrangementToken: UUID?
     private var activePromptID: UUID?
     private var promptHistoryProjectID: UUID?
-    private let services: AppServices
-    private let defaults: UserDefaults
+    let services: AppServices
+    let defaults: UserDefaults
     var score: Score { project.current.score }
     var displayedScore: Score { score }
     var issues: [ScoreIssue] { Validator.inspect(displayedScore) }
@@ -71,6 +75,7 @@ enum AppSheet: String, Identifiable { case importSong, melody, lyrics, choir, so
             self?.selectedNote = note
             if let pitch = note.pitch { self?.player.stop(); self?.player.audition(pitch) }
         }
+        if score.isImportedArrangement { workspace = .practice }
         reloadPromptHistory(); refreshLibrary(); refreshScore()
     }
     func refreshScore() { scoreView.render(displayedScore,stamp:stamp,only:workspace == .print ? exportVoice : nil) }
@@ -91,7 +96,7 @@ enum AppSheet: String, Identifiable { case importSong, melody, lyrics, choir, so
     }
     func open(_ url: URL) {
         guard !busy else { return }
-        do { let p = try Project.load(Data(contentsOf:url)); persist(); player.stop(); project = p; reloadPromptHistory(); resetSelection(); persist(); refreshScore() }
+        do { let p = try Project.load(Data(contentsOf:url)); persist(); player.stop(); project = p; reloadPromptHistory(); resetSelection(); if score.isImportedArrangement { workspace = .practice }; persist(); refreshScore() }
         catch { errorMessage = error.localizedDescription }
     }
     func openPanel() {
@@ -108,13 +113,14 @@ enum AppSheet: String, Identifiable { case importSong, melody, lyrics, choir, so
         do { player.stop(); project = try Demo.project(); reloadPromptHistory(); resetSelection(); persist(); refreshScore() }
         catch { errorMessage = error.localizedDescription }
     }
-    private func resetSelection() { previousArrangementID = nil; selectedNote = nil; exportVoice = nil; passageStart = 1; passageEnd = max(1,score.tune.measureCount); usePassage = false }
+    func resetSelection() { showOriginalPDF = false; previousArrangementID = nil; selectedNote = nil; exportVoice = nil; passageStart = 1; passageEnd = max(1,score.tune.measureCount); usePassage = false }
     func commit(_ updated: Score, label: String, request: String = "") {
         player.stop(); project.commit(updated,label:label,request:request)
         persist(); resetSelection(); refreshScore(); status = label
     }
     func confirmMelody(_ tune: Tune) {
         guard !busy else { return }
+        guard !score.isImportedArrangement else { reviewImportedArrangement(); return }
         do {
             try tune.validated(); var updated = score
             if updated.tune != tune { updated.parts = [] }
@@ -124,6 +130,7 @@ enum AppSheet: String, Identifiable { case importSong, melody, lyrics, choir, so
     }
     func applyLyrics(_ text: String) {
         guard !busy else { return }
+        guard !score.isImportedArrangement else { reviewImportedArrangement(); return }
         do {
             let s = try PartTiming.updateLyrics(in: score, text: text)
             commit(s,label:"Lyrics underlay updated"); sheet = nil
@@ -132,12 +139,18 @@ enum AppSheet: String, Identifiable { case importSong, melody, lyrics, choir, so
     func updateChoir(_ profile: ChoirProfile) {
         guard !busy else { return }
         do {
-            try profile.validated(); var s = score; s.profile = profile; s.parts = []
+            try profile.validated(); var s = score
+            if s.isImportedArrangement {
+                guard profile.voicing == s.profile.voicing else { throw HymnError.invalid("Imported voices cannot be replaced by a different voicing. Their notes are preserved.") }
+                s.profile = profile; commit(s, label: "Rehearsal range settings updated; notes preserved"); sheet = nil; return
+            }
+            s.profile = profile; s.parts = []
             commit(s,label:"Choir profile updated; ready to re-arrange"); sheet = nil
         } catch { errorMessage = error.localizedDescription }
     }
     func transpose(_ semitones: Int) {
         guard !busy else { return }
+        guard !score.isImportedArrangement else { reviewImportedArrangement(); return }
         do {
             var s = score; s.tune = try s.tune.transposed(by:semitones); s.parts = []
             // Explicit transpose control is the only operation allowed to alter every melody pitch.
@@ -162,6 +175,10 @@ enum AppSheet: String, Identifiable { case importSong, melody, lyrics, choir, so
     }
     func propose(_ request: String, usingAI: Bool) {
         guard !busy else { return }
+        guard !score.isImportedArrangement else {
+            assistantReply = "This is a preserved existing arrangement. Use Review / correct transcription for recognition errors. No new harmony is generated in rehearsal mode."
+            status = "Imported parts preserved"; return
+        }
         guard score.melodyConfirmed else { sheet = .melody; return }
         if usingAI && !cloudEnabled { errorMessage = "Enable cloud AI and add your API key in Settings. The local draft does not use AI."; return }
         guard !request.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, request.count <= 8000 else {
@@ -286,7 +303,7 @@ enum AppSheet: String, Identifiable { case importSong, melody, lyrics, choir, so
         }
     }
     private var promptLogURL: URL { folder.appendingPathComponent((promptHistoryProjectID ?? project.id).uuidString + ".requests.json") }
-    private func reloadPromptHistory() {
+    func reloadPromptHistory() {
         promptHistoryProjectID = project.id
         assistantReply = ""; promptHistory = []
         guard let data = try? Data(contentsOf: promptLogURL), data.count <= 10_000_000 else { return }
@@ -332,12 +349,17 @@ enum AppSheet: String, Identifiable { case importSong, melody, lyrics, choir, so
         do { try promptLogData().write(to: url, options: .atomic); status = "Prompt log exported" }
         catch { errorMessage = error.localizedDescription }
     }
-    private func setArrangementProgress(_ progress: ArrangementProgress) {
+    func setArrangementProgress(_ progress: ArrangementProgress?) {
         arrangementProgress = progress
-        status = progress.title
+        if let progress { status = progress.title }
     }
     func cancelOperation() {
         operation?.cancel()
+        if choirImportToken != nil {
+            choirImportToken = nil; operation = nil; setArrangementProgress(nil); busy = false
+            pendingChoirImport = nil; choirImportContext = nil
+            status = "Import cancelled; current project unchanged"; return
+        }
         if arrangementToken != nil {
             if let id = activePromptID { finishPrompt(id, outcome: .cancelled, message: "Cancelled; score unchanged") }
             activePromptID = nil
@@ -361,9 +383,11 @@ enum AppSheet: String, Identifiable { case importSong, melody, lyrics, choir, so
         let t = displayedScore.tune
         var start = 0, end = t.totalTicks
         if usePassage {
-            let starts = t.noteStarts
-            start = starts.first(where: { t.measure(at:$0) >= passageStart }) ?? 0
-            end = starts.first(where: { t.measure(at:$0) > passageEnd }) ?? t.totalTicks
+            func boundary(_ measure: Int) -> Int {
+                t.pickupTicks > 0 ? (measure == 1 ? 0 : t.pickupTicks + (measure - 2) * t.barTicks) : (measure - 1) * t.barTicks
+            }
+            start = boundary(passageStart)
+            end = min(boundary(passageEnd + 1), t.totalTicks)
         }
         player.play(displayedScore,mix:mix,speed:speed,startTick:start,endTick:end,countIn:countIn,loop:loop)
     }

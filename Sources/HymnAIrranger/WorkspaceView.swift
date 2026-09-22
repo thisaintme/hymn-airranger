@@ -24,11 +24,17 @@ struct WorkspaceView: View {
                             arrangementReadyBanner
                                 .fixedSize(horizontal: false, vertical: true)
                         }
-                        if model.workspace == .print { printControls }
+                        if model.workspace == .print && !model.showOriginalPDF { printControls }
                         if !renderer.error.isEmpty {
                             Text(renderer.error).font(.callout).foregroundStyle(.orange).padding().frame(maxWidth:.infinity,alignment:.leading)
                         }
-                        ScoreWebView(controller:renderer)
+                        if model.score.isImportedArrangement { importedViewControls }
+                        ZStack {
+                            ScoreWebView(controller:renderer)
+                                .opacity(model.showOriginalPDF && model.originalChoirPDF != nil ? 0 : 1)
+                                .allowsHitTesting(!(model.showOriginalPDF && model.originalChoirPDF != nil))
+                            if model.showOriginalPDF, let source = model.originalChoirPDF { SourcePDFView(data: source.data) }
+                        }
                         if model.workspace == .practice { PracticePanel(model:model) }
                         TransportBar(model:model,player:player)
                     }
@@ -51,6 +57,22 @@ struct WorkspaceView: View {
         .onReceive(player.$tick) { renderer.highlight($0) }
         .onAppear { model.refreshScore() }
     }
+    private var importedViewControls: some View {
+        HStack(spacing: 14) {
+            if model.originalChoirPDF != nil {
+                Picker("View", selection: $model.showOriginalPDF) {
+                    Text("Practice score").tag(false); Text("Original PDF").tag(true)
+                }.pickerStyle(.segmented).frame(width: 245)
+            }
+            Text(model.showOriginalPDF ? "Original pages — playback highlighting is in Practice score." : "Imported transcription — no rearrangement.")
+                .font(.caption).foregroundStyle(.secondary)
+            Spacer()
+            if model.showOriginalPDF {
+                Button("Print original…") { model.printOriginalChoirPDF() }
+                Button("Save original…") { model.saveOriginalChoirPDF() }
+            }
+        }.padding(10)
+    }
     private var header: some View {
         HStack(alignment:.center,spacing:20) {
             VStack(alignment:.leading,spacing:7) {
@@ -71,7 +93,7 @@ struct WorkspaceView: View {
             Image(systemName:"ear.badge.checkmark")
             Text("First, check that this is your melody.").font(.callout)
             Spacer()
-            Button("Listen & check") { model.sheet = .melody }.buttonStyle(.borderedProminent)
+            Button("Listen & check") { if model.score.isImportedArrangement { model.reviewImportedArrangement() } else { model.sheet = .melody } }.buttonStyle(.borderedProminent)
         }.padding(14).background(Color.orange.opacity(0.10))
     }
     private var arrangementReadyBanner: some View {
@@ -199,7 +221,7 @@ struct InspectorView: View {
     var body: some View {
         VStack(alignment:.leading,spacing:15) {
             Picker("Inspector",selection:$tab) { Text("Assistant").tag("Assistant"); Text("Versions").tag("Versions") }.pickerStyle(.segmented)
-            if tab == "Assistant" { ScrollView { assistant } } else { versions }
+            if tab == "Assistant" { ScrollView { if model.score.isImportedArrangement { ImportedArrangementInspector(model: model) } else { assistant } } } else { versions }
         }.padding(17).background(.background)
     }
     private var assistant: some View {

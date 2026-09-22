@@ -30,7 +30,7 @@ public enum Notation {
         var ordinal: Int; var startsNote: Bool; var endsNote: Bool
     }
     static let values: [(Int, Int, Bool, String)] = [(1920,1,false,"whole"),(1440,2,true,"half"),(960,2,false,"half"),(720,4,true,"quarter"),(480,4,false,"quarter"),(360,8,true,"eighth"),(240,8,false,"eighth"),(120,16,false,"16th")]
-    static func slices(_ tune: Tune, notes: [Note]? = nil) -> [Slice] {
+    static func slices(_ tune: Tune, notes: [Note]? = nil, preserveBeatClarity: Bool = false) -> [Slice] {
         var output: [Slice] = []; var tick = 0
         for (i, note) in (notes ?? tune.melody).enumerated() {
             var left = note.ticks, ordinal = 0
@@ -41,7 +41,7 @@ public enum Notation {
                 var available = min(left, barEnd-tick)
                 // Show the beat crossed by a syncopated sustained segment with a tie.
                 let relative = tick < tune.pickupTicks ? tick : tick - tune.pickupTicks
-                if note.sourceID != nil && tune.beatUnit == 4 && relative % 480 != 0 {
+                if (preserveBeatClarity || note.sourceID != nil) && tune.beatUnit == 4 && relative % 480 != 0 {
                     available = min(available, 480 - relative % 480)
                 }
                 let duration = values.first { $0.0 <= available }?.0 ?? 120
@@ -74,7 +74,7 @@ public enum Notation {
         let t = score.tune, allSlices = slices(t)
         let parts = score.effectiveParts.filter { voice == nil || $0.voice == voice }
         guard !parts.isEmpty else { throw HymnError.invalid("There is no selected voice to engrave.") }
-        let partSlices = Dictionary(uniqueKeysWithValues: parts.map { ($0.voice, slices(t, notes: $0.notes)) })
+        let partSlices = Dictionary(uniqueKeysWithValues: parts.map { ($0.voice, slices(t, notes: $0.notes, preserveBeatClarity: score.isImportedArrangement)) })
         let sourceIndices = Dictionary(uniqueKeysWithValues: t.melody.enumerated().map { ($0.element.id, $0.offset) })
         var events: [RenderEvent] = []
         let keySig = t.fifths == 0 ? "0" : "\(abs(t.fifths))\(t.fifths > 0 ? "s" : "f")"
@@ -124,7 +124,8 @@ public enum Notation {
                         if !slice.startsNote, let prev = previousTies[tieKey] { ties.append("<tie startid=\"#\(XML.escape(prev))\" endid=\"#\(XML.escape(id))\"/>") }
                         previousTies[tieKey] = slice.endsNote ? nil : id
                     } else { mei += "<rest \(attributes)/>" }
-                    let lyricKey = part.voice.rawValue + note.anchorID
+                    let lyricKey = part.voice.rawValue + (score.isImportedArrangement ? "-imported-lyric" : note.anchorID)
+                    if score.isImportedArrangement && note.pitch == nil { lyricOwners[lyricKey] = nil }
                     if slice.startsNote && note.pitch != nil && !note.lyrics.isEmpty { lyricOwners[lyricKey] = id }
                     events.append(.init(id: id, noteIndex: sourceIndices[note.anchorID] ?? slice.index, voice: part.voice, tick: slice.tick, ticks: slice.ticks, pitch: note.pitch, lyric: note.lyrics.first?.text ?? "", lyricOwnerID: lyricOwners[lyricKey]))
                 }
@@ -151,7 +152,7 @@ public enum Notation {
         xml += "</part-list>"
         guard !parts.isEmpty else { throw HymnError.invalid("There is no selected voice to export.") }
         for part in parts {
-            let slices = slices(t, notes: part.notes)
+            let slices = slices(t, notes: part.notes, preserveBeatClarity: score.isImportedArrangement)
             xml += "<part id=\"\(part.voice.rawValue)\">"
             for measure in 1...max(t.measureCount,1) {
                 xml += "<measure number=\"\(measure)\"\(measure == 1 && t.pickupTicks > 0 ? " implicit=\"yes\"" : "")>"

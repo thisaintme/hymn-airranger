@@ -142,6 +142,8 @@ public struct Part: Codable, Equatable, Sendable {
     public init(voice: Voice, notes: [Note]) { self.voice = voice; self.notes = notes }
 }
 public struct Score: Codable, Equatable, Sendable {
+    public var rehearsal: RehearsalInfo?
+    public var isImportedArrangement: Bool { rehearsal != nil }
     public var tune: Tune
     public var profile: ChoirProfile
     public var parts: [Part]
@@ -180,13 +182,15 @@ public struct Project: Codable, Equatable, Sendable {
     public init(score: Score) {
         let first = Revision(score: score, label: "Starting point")
         revisions = [first]; currentID = first.id
-        if score.requiresVersion2 { schemaVersion = 2 }
+        if score.isImportedArrangement { schemaVersion = 3 }
+        else if score.requiresVersion2 { schemaVersion = max(schemaVersion, 2) }
     }
     public var current: Revision { revisions.first { $0.id == currentID }! }
     public mutating func commit(_ score: Score, label: String, request: String = "") {
         let revision = Revision(score: score, parentID: currentID, label: label, request: request)
         revisions.append(revision); currentID = revision.id
-        if score.requiresVersion2 { schemaVersion = 2 }
+        if score.isImportedArrangement { schemaVersion = 3 }
+        else if score.requiresVersion2 { schemaVersion = max(schemaVersion, 2) }
     }
     public mutating func checkout(_ id: UUID) throws {
         guard revisions.contains(where: { $0.id == id }) else { throw HymnError.invalid("That version is missing.") }
@@ -194,10 +198,11 @@ public struct Project: Codable, Equatable, Sendable {
     }
     public func validated() throws {
         guard sources.reduce(0, { $0 + $1.data.count }) <= 25_000_000 else { throw HymnError.invalid("Source attachments exceed 25 MB.") }
-        guard [1, 2].contains(schemaVersion) else { throw HymnError.invalid("This project uses a newer or unsupported file format.") }
+        guard [1, 2, 3].contains(schemaVersion) else { throw HymnError.invalid("This project uses a newer or unsupported file format.") }
         guard !revisions.isEmpty, revisions.count <= 2000, Set(revisions.map(\.id)).count == revisions.count,
               revisions.contains(where: { $0.id == currentID }),
               approvedID == nil || revisions.contains(where: { $0.id == approvedID }) else { throw HymnError.invalid("The project's version history is damaged.") }
+        guard schemaVersion >= 3 || !revisions.contains(where: { $0.score.isImportedArrangement }) else { throw HymnError.invalid("Imported arrangements require project format 3.") }
         guard schemaVersion >= 2 || !revisions.contains(where: { $0.score.requiresVersion2 }) else { throw HymnError.invalid("Independent rhythms require project format 2.") }
         var seen = Set<UUID>()
         for revision in revisions {

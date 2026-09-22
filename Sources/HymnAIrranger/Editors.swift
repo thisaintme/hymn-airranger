@@ -13,14 +13,19 @@ struct ImportView: View {
     @ObservedObject var model: AppModel
     @StateObject private var recorder = MelodyRecorder()
     @State private var kind = "PDF"
+    @State private var existingArrangement = false
     @State private var pdfData: Data?
     @State private var filename = ""
     @State private var tempo = 80
     @State private var youtube = ""
     var body: some View {
         VStack(alignment:.leading,spacing:22) {
-            SheetHeader(title:"Bring in your melody",subtitle:"We check the tune first, then arrange it for your singers. No musical expertise is assumed.")
-            Picker("Source",selection:$kind) { Text("PDF score").tag("PDF"); Text("Sing / audio").tag("Audio"); Text("YouTube reference").tag("YouTube"); Text("MusicXML").tag("XML") }.pickerStyle(.segmented)
+            SheetHeader(title:"Bring in a song",subtitle:existingArrangement ? "Keep the existing vocal parts. Check the transcription, then go straight to Practice." : "Check a melody, then create a new arrangement for your singers.")
+            Picker("Purpose", selection: $existingArrangement) {
+                Text("Create a new arrangement").tag(false)
+                Text("Rehearse an existing arrangement").tag(true)
+            }.pickerStyle(.segmented).disabled(model.busy)
+            Picker("Source",selection:$kind) { Text("PDF score").tag("PDF"); if !existingArrangement { Text("Sing / audio").tag("Audio"); Text("YouTube reference").tag("YouTube") }; Text("MusicXML").tag("XML") }.pickerStyle(.segmented).disabled(model.busy)
             Group {
                 switch kind {
                 case "PDF": pdfPane
@@ -36,17 +41,23 @@ struct ImportView: View {
                 Button("Close") { recorder.stop(); model.sheet = nil }.keyboardShortcut(.cancelAction).disabled(model.busy)
             }
         }.padding(28).frame(width:820,height:700)
+        .onChange(of: existingArrangement) { _, _ in recorder.stop(); kind = "PDF" }
         .onDisappear { if recorder.isRecording { recorder.stop() } }
     }
     private var pdfPane: some View {
         VStack(alignment:.leading,spacing:14) {
             HStack { Button("Choose PDF…") { choosePDF() }; Text(filename.isEmpty ? "One song · up to five pages · 10 MB maximum" : filename).font(.caption).foregroundStyle(.secondary) }
             if let data = pdfData { SourcePDFView(data:data).frame(maxHeight:.infinity).clipShape(RoundedRectangle(cornerRadius:10)) }
-            else { importPlaceholder("doc.richtext","Start with the clearest copy you have.","Experimental AI recognition can confuse notes, lyrics and rhythms. You will listen to the extracted melody before using it.") }
+            else { importPlaceholder("doc.richtext","Start with the clearest copy you have.",existingArrangement ? "Experimental recognition reads the existing SAB/SATB voices, not the piano. Shared-staff voice assignments and every part must be reviewed. The original pages stay unchanged. Repeats, tuplets and changing key/meter are not supported yet." : "Experimental AI recognition can confuse notes, lyrics and rhythms. You will listen to the extracted melody before using it.") }
             HStack {
                 Text("The selected PDF is uploaded only after explicit confirmation.").font(.caption).foregroundStyle(.secondary)
                 Spacer()
-                Button("Read melody with AI") { if let pdfData { model.importPDF(pdfData,filename:filename) } }.buttonStyle(.borderedProminent).disabled(pdfData == nil || model.busy)
+                Button(existingArrangement ? "Read existing vocal parts" : "Read melody with AI") {
+                    if let pdfData {
+                        if existingArrangement { model.requestChoirPDFImport(pdfData, filename: filename) }
+                        else { model.importPDF(pdfData,filename:filename) }
+                    }
+                }.buttonStyle(.borderedProminent).disabled(pdfData == nil || model.busy)
             }
         }
     }
@@ -75,10 +86,10 @@ struct ImportView: View {
     }
     private var xmlPane: some View {
         VStack(alignment:.leading,spacing:20) {
-            importPlaceholder("music.note.list","Already have digital notes?","Import an uncompressed .musicxml or .xml melody. The alpha reads the first part, so export a melody-only file first. Compressed MXL, repeats, polyphony and tuplets are not supported yet.")
-            Button("Choose melody MusicXML…") {
+            importPlaceholder("music.note.list","Already have digital notes?",existingArrangement ? "Read existing vocal lines from uncompressed MusicXML. Separate parts and explicitly encoded shared-staff voices are supported. Named piano/organ parts are excluded and reported. No cloud upload or AI key is needed. Repeats, tuplets, divisi chords and changing key/meter are rejected rather than flattened." : "Import an uncompressed .musicxml or .xml melody. The alpha reads the first part, so export a melody-only file first. Compressed MXL, repeats, polyphony and tuplets are not supported yet.")
+            Button(existingArrangement ? "Choose choir MusicXML…" : "Choose melody MusicXML…") {
                 let panel = NSOpenPanel(); panel.allowedContentTypes = [.xml,UTType(filenameExtension:"musicxml") ?? .xml]
-                if panel.runModal() == .OK, let url = panel.url { model.importMusicXML(url) }
+                if panel.runModal() == .OK, let url = panel.url { if existingArrangement { model.importChoirMusicXML(url) } else { model.importMusicXML(url) } }
             }.buttonStyle(.borderedProminent).disabled(model.busy)
         }
     }
@@ -159,7 +170,7 @@ struct MelodyNoteRow: View {
         HStack(spacing:12) {
             Text(String(position)).font(.system(size:11,design:.monospaced)).foregroundStyle(.secondary).frame(width:25,alignment:.trailing)
             Button(action:onPlay) { Image(systemName:"play.circle") }.buttonStyle(.borderless).disabled(note.pitch == nil).accessibilityLabel("Play note \(position)")
-            Toggle("Rest",isOn:Binding(get:{ note.pitch == nil },set:{ note.pitch = $0 ? nil : 60 })).toggleStyle(.checkbox).font(.caption)
+            Toggle("Rest",isOn:Binding(get:{ note.pitch == nil },set:{ note.pitch = $0 ? nil : 60; if $0 { note.lyrics = [] } })).toggleStyle(.checkbox).font(.caption)
             Stepper(value:Binding(get:{ note.pitch ?? 60 },set:{ note.pitch = $0 }),in:24...96) { Text(note.pitch.map(pitchName) ?? "—").font(.system(size:12,weight:.medium,design:.monospaced)).frame(width:46) }.frame(width:100).disabled(note.pitch == nil)
             Stepper(value:$note.ticks,in:120...7680,step:120) { Text("\(Double(note.ticks)/480,specifier:"%.2g") beats").font(.caption).frame(width:62) }.frame(width:117)
             TextField("Syllable",text:Binding(get:{ note.lyrics.first(where:{ $0.verse == 1 })?.text ?? "" },set:{ value in
@@ -201,13 +212,13 @@ struct ChoirEditor: View {
     var body: some View {
         VStack(alignment:.leading,spacing:20) {
             SheetHeader(title:"Arrange for the singers you have",subtitle:"Your Bass singer is not treated as a deep bass. These starting ranges are estimates, not measured facts. Confirm comfortable notes with each section.")
-            Picker("Available voices",selection:$profile.voicing) { ForEach(Voicing.allCases) { Text($0.label).tag($0) } }.pickerStyle(.segmented)
-            Text("Without tenor, the app creates a fresh three-part arrangement. It does not simply remove a staff from the four-part version.").font(.caption).foregroundStyle(.secondary)
+            Picker("Available voices",selection:$profile.voicing) { ForEach(Voicing.allCases) { Text($0.label).tag($0) } }.pickerStyle(.segmented).disabled(model.score.isImportedArrangement)
+            Text(model.score.isImportedArrangement ? "Imported voices are fixed. These range settings only produce rehearsal warnings; no original note will be changed." : "Without tenor, the app creates a fresh three-part arrangement. It does not simply remove a staff from the four-part version.").font(.caption).foregroundStyle(.secondary)
             ForEach(Voice.allCases) { voice in
                 RangeEditor(voice:voice,range:Binding(get:{ profile[voice] },set:{ profile[voice] = $0 }))
             }
             HStack { Text("Prefer small movements"); Slider(value:$profile.simplicity,in:0.5...5); Text("\(profile.simplicity,specifier:"%.1f")").monospacedDigit() }
-            Text("Changing this profile clears the current arrangement so it can be rebuilt safely. The melody and earlier versions are preserved.").font(.caption).foregroundStyle(.secondary)
+            Text(model.score.isImportedArrangement ? "Imported notes, rhythms and lyrics remain unchanged when saving these settings." : "Changing this profile clears the current arrangement so it can be rebuilt safely. The melody and earlier versions are preserved.").font(.caption).foregroundStyle(.secondary)
             HStack { Spacer(); Button("Cancel") { model.sheet = nil }; Button("Save choir profile") { model.updateChoir(profile) }.buttonStyle(.borderedProminent) }
         }.padding(28).frame(width:790,height:640)
     }

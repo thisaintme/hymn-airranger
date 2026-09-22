@@ -144,6 +144,9 @@ public enum PracticeLyrics {
         let highlighted = parts.filter { (mix.gains[$0.voice] ?? 0) == maximum }
         let part = highlighted.count == 1 ? highlighted[0] : parts.first { $0.voice == .soprano }
         guard let part, let i = part.noteStarts.lastIndex(where: { Double($0) <= tick }), part.notes[i].pitch != nil else { return nil }
+        if score.isImportedArrangement {
+            return part.notes.prefix(i + 1).reversed().prefix(while: { $0.pitch != nil }).first(where: { !$0.lyrics.isEmpty })?.lyrics.first?.text
+        }
         return part.notes.prefix(i+1).last(where: { $0.anchorID == part.notes[i].anchorID && !$0.lyrics.isEmpty })?.lyrics.first?.text
     }
 }

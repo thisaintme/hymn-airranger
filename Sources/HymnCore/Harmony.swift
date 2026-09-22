@@ -35,6 +35,7 @@ public enum Harmonizer {
     struct Path { var frames: [[Int]]; var degree: Int; var cost: Double }
 
     public static func arrange(_ source: Score, plan: HarmonyPlan = .init()) throws -> Score {
+        guard !source.isImportedArrangement else { throw HymnError.invalid("This imported arrangement is preserved for rehearsal. Use transcription review to correct a reading error; no harmony is regenerated.") }
         try source.tune.validated(); try source.profile.validated(); try plan.validated(for: source.tune)
         try plan.validateOperations(for: source)
         if plan.action != .harmonize { return try ExpressiveEditor.apply(source, plan: plan) }

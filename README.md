@@ -35,6 +35,22 @@ See [Alpha 3 changes](Docs/Alpha%203%20fixes.md). Supporting voices now support 
 | PDF output | Verovio score pages in WKWebView, A4 PDF export, revision stamps | Native export and pagination not run here |
 | MP3 export | JavaScriptCore + lamejs encoder, full/solo/emphasized rehearsal pack | Native encoder not run; included sample MP3s were encoded separately with FFmpeg |
 
+## Rehearse an existing SATB or SAB arrangement
+
+Choose **Bring in a song → Rehearse an existing arrangement**. Import a choir PDF
+(experimental cloud transcription, with consent) or uncompressed MusicXML (local).
+Identify and check every voice against the source, correct recognition errors, then
+click **Finish review & rehearse**. No AI harmonization step is needed. Independent
+part timing and lyrics are preserved, and range/crossing issues only produce warnings.
+
+The **Original PDF** view preserves the source pages for viewing/printing; the
+**Practice score** provides clickable notation and synchronized highlighting. Solo,
+emphasized playback and rehearsal exports use the checked transcription, not the PDF
+image. Repeats, tuplets, changing keys/meters/tempos and divisi are not yet supported;
+they must not be silently simplified. Piano accompaniment is excluded from practice
+audio. See [Alpha 5 details](Docs/Alpha%205%20fixes.md) for limits and review instructions.
+Imported-arrangement projects use format 3 (alpha 5 or later); back up older projects.
+
 ## Optional: build from source on an Apple Silicon Mac
 
 Target: **macOS 14 or later**, Apple Silicon, an Apple toolchain supporting Swift 5.9 or later. An internet connection is needed for the initial resource download. No Python, Homebrew, or server is required by the native app.
