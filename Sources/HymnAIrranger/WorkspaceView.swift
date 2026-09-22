@@ -129,7 +129,7 @@ struct LibrarySidebar: View {
             VStack(alignment:.leading,spacing:12) {
                 Divider()
                 Button { model.sheet = .choir } label: { Label("Our choir",systemImage:"person.3") }.buttonStyle(.plain)
-                Text("8 S  ·  4 A  ·  2 T  ·  1 lower\nTenor optional. Ranges provisional.").font(.caption2).foregroundStyle(.secondary).lineSpacing(3)
+                Text("8 S  ·  4 A  ·  2 T  ·  1 B\nTenor optional. Ranges provisional.").font(.caption2).foregroundStyle(.secondary).lineSpacing(3)
                 Button { model.openPanel() } label: { Label("Open project…",systemImage:"folder") }.buttonStyle(.plain)
                 Button { model.newDemo() } label: { Label("Original demo study",systemImage:"music.quarternote.3") }.buttonStyle(.plain)
                 SettingsLink { Label("Settings",systemImage:"gearshape") }.buttonStyle(.plain)

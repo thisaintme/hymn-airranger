@@ -6,15 +6,17 @@ public enum HymnError: Error, LocalizedError, Equatable {
 }
 
 public enum Voice: String, Codable, CaseIterable, Identifiable, Sendable {
+    // Keep the persisted identifier "lower" so existing projects, mixes and logs remain compatible.
+    // User-facing labels use Bass/B; this rename does not change any vocal range.
     case soprano, alto, tenor, lower
     public var id: String { rawValue }
-    public var name: String { switch self { case .soprano: return "Soprano"; case .alto: return "Alto"; case .tenor: return "Tenor"; case .lower: return "Lower voice" } }
-    public var short: String { switch self { case .soprano: return "S"; case .alto: return "A"; case .tenor: return "T"; case .lower: return "L" } }
+    public var name: String { switch self { case .soprano: return "Soprano"; case .alto: return "Alto"; case .tenor: return "Tenor"; case .lower: return "Bass" } }
+    public var short: String { switch self { case .soprano: return "S"; case .alto: return "A"; case .tenor: return "T"; case .lower: return "B" } }
 }
 public enum Voicing: String, Codable, CaseIterable, Identifiable, Sendable {
     case sab, satb
     public var id: String { rawValue }
-    public var label: String { self == .sab ? "S · A · Lower" : "S · A · T · Lower" }
+    public var label: String { self == .sab ? "S · A · B" : "S · A · T · B" }
     public var voices: [Voice] { self == .sab ? [.soprano, .alto, .lower] : [.soprano, .alto, .tenor, .lower] }
 }
 public struct VoiceRange: Codable, Equatable, Sendable {

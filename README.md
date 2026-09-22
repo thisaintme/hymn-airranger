@@ -11,7 +11,7 @@ The goal is a quiet, approachable application for a German church choir of about
 
 ### Product decisions
 
-The default is **Soprano · Alto · Lower voice**, with **Soprano · Alto · Tenor · Lower voice** available. Changing this setting requires re-arrangement; the app does not pretend that muting a part creates a complete new harmony. Pitch ranges are provisional and must be checked with the actual singers.
+The default is **Soprano · Alto · Bass**, with **Soprano · Alto · Tenor · Bass** available. Changing this setting requires re-arrangement; the app does not pretend that muting a part creates a complete new harmony. Pitch ranges are provisional and must be checked with the actual singers.
 
 The melody is explicitly reviewed before arrangement. Accepted edits save the complete musical result. Restoring an older version preserves the later versions. Printed notation and practice sound are derived from the same score data.
 

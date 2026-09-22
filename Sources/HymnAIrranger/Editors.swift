@@ -200,7 +200,7 @@ struct ChoirEditor: View {
     init(model: AppModel) { self.model = model; _profile = State(initialValue:model.score.profile) }
     var body: some View {
         VStack(alignment:.leading,spacing:20) {
-            SheetHeader(title:"Arrange for the singers you have",subtitle:"Your lower singer is not treated as a deep bass. These starting ranges are estimates, not measured facts. Confirm comfortable notes with each section.")
+            SheetHeader(title:"Arrange for the singers you have",subtitle:"Your Bass singer is not treated as a deep bass. These starting ranges are estimates, not measured facts. Confirm comfortable notes with each section.")
             Picker("Available voices",selection:$profile.voicing) { ForEach(Voicing.allCases) { Text($0.label).tag($0) } }.pickerStyle(.segmented)
             Text("Without tenor, the app creates a fresh three-part arrangement. It does not simply remove a staff from the four-part version.").font(.caption).foregroundStyle(.secondary)
             ForEach(Voice.allCases) { voice in
