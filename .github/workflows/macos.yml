@@ -60,7 +60,7 @@ jobs:
             echo 'Extract the artifact, then extract Hymn-AIrranger-macOS-arm64.zip.'
             echo 'Move Hymn AIrranger.app to Applications. No Xcode, Terminal or API key is required for the original study.'
             echo 'Requires macOS 14+. Development signature only; not Apple notarized. See INSTALL.md.'
-            echo 'The archive and signature are checked; interactive playback, PDF export and microphone checks remain manual.'
+            echo 'Native tests cover review state, notation, PDF/MP3 and resource packaging; live PDF-recognition accuracy and actual-device interaction still need testing.'
           } >> "$GITHUB_STEP_SUMMARY"
   publish:
     name: Publish a new alpha version
@@ -97,15 +97,19 @@ jobs:
           fi
           cat > release-notes.md <<EOF
           ## What's changed
-          Renamed Lower voice to **Bass**, abbreviated **B**, across the interface, newly exported scores and rehearsal-track filenames. Existing notes, rhythms, dynamics, vocal ranges, saved projects and histories are unchanged. Both Bass and lower voice remain accepted request aliases. No migration or API-key reset is needed. Re-export previously generated files for the new labels. See Docs/Alpha 4 fixes.md.
+          Added **Bring in a song → Rehearse an existing arrangement** for experimental full-choir PDF transcription and local MusicXML import. Match the vocal lines, correct and check every part, then go straight to Practice without generating new harmony. The original PDF stays unchanged for viewing, saving and printing. Range and voice-crossing issues are warnings rather than rewritten notes.
+
+          Supports bounded SAB/SATB scores with independent timing, lyrics and cross-bar ties. PDF recognition is experimental and requires your cloud key plus explicit upload consent (up to five pages / 10 MB). MusicXML is local (uncompressed score-partwise, up to 5 MB). Repeats/jumps, tuplets, changing key/meter/tempo and divisi are not supported; piano accompaniment is not synthesized. Original-page highlighting is not included; highlighting uses the practice transcription.
+
+          Imported projects use format 3 and need alpha 5 or later; older formats still open. Back up important projects. See Docs/Alpha 5 fixes.md for scope and the complete review workflow.
 
           ## Download and test
           Download **Hymn-AIrranger-macOS-arm64.zip** below, extract it, and move **Hymn AIrranger.app** to Applications.
-          Requires **Apple Silicon and macOS 14 or later**. No Xcode, build tools, server, or API key is needed to try the original study.
+          Requires **Apple Silicon and macOS 14 or later**. No Xcode or build tools are needed.
 
           **Development alpha: ad-hoc signed, NOT Apple-notarized.** Read INSTALL.md before opening. Do not disable Gatekeeper globally. This is not a choir-ready production release.
 
-          The native build and automated core/app/integration tests passed on the macOS runner. Packaging verifies resources, architecture, and the app signature before and after ZIP extraction. WebKit engraving, A4 PDF export, and native MP3 encoding/decoding have automated smoke coverage on the original study. Human listening, real repertoire, device playback, microphone and live-model behavior still need acceptance testing.
+          The native build and automated core/app/integration tests passed on the macOS runner. Packaging verifies resources, architecture, and the app signature before and after ZIP extraction. Tests exercise transcription review, cancellation, preservation, WebKit engraving, visible voice/key labels, A4 PDF output and native MP3 encoding/decoding. Recognition fixtures are simulated: no paid live-model requests or real-repertoire PDF benchmark were run. Check the imported notes against your original before sharing practice tracks.
 
           Source commit: $GITHUB_SHA
           Build: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID
