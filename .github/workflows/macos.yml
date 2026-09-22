@@ -97,11 +97,11 @@ jobs:
           fi
           cat > release-notes.md <<EOF
           ## What's changed
-          Fixed the handoff from **Bring in a song** to **Check the existing arrangement**. The app now updates the content of one stable modal instead of replacing an already-open sheet. Recognition, validation and save errors appear inside the active modal, where they can be read and copied. Processing errors release the controls for an explicit retry.
+          Added **triplets and finer rhythms** to PDF and MusicXML imports, notation, playback and exports. Single-level 2:3, 3:2, 4:3, 5:4, 6:4, 7:4 and 9:8 tuplets are supported, including rests and tied portions. Thirty-second notes, sixty-fourths, dotted sixteenths and double dots are also supported. The timing engine does not round tuplets onto the old grid.
 
-          Completed transcriptions remain pending until **Finish review & rehearse** succeeds. A **Continue review** banner and **Review later** action let you resume a pending transcription and corrections without another upload or AI call. A second import cannot silently replace pending review work. This recovery is limited to the current app session, not quitting or restarting; previously abandoned alpha-5 imports cannot be recovered from disk.
+          Duration menus show written note values and preserve imported tuplet ratios. AI editing of generated arrangements can request a bounded three-note triplet repeat in a supporting voice; existing imported arrangements still bypass the harmonizer.
 
-          Existing projects, notes, API-key storage and project formats are unchanged. PDF recognition remains experimental and still has the alpha-5 notation/input limits. The update fixes presentation and feedback, not recognition accuracy for every PDF. See Docs/Alpha 6 fixes.md.
+          Advanced rhythms use project format 4 and require alpha 7 or later. Existing files retain their original timing, notes, histories and API-key settings. Nested or cross-bar tuplet groups, other ratios, repeats/jumps, changing key/meter/tempo and divisi remain unsupported. PDF recognition is experimental; compare the transcription with the original. See Docs/Alpha 7 fixes.md and Examples/Tuplets and finer notes.musicxml.
 
           ## Download and test
           Download **Hymn-AIrranger-macOS-arm64.zip** below, extract it, and move **Hymn AIrranger.app** to Applications.
@@ -109,7 +109,7 @@ jobs:
 
           **Development alpha: ad-hoc signed, NOT Apple-notarized.** Read INSTALL.md before opening. Do not disable Gatekeeper globally. Back up important projects before alpha testing.
 
-          The macOS build, automated core/app tests and native integration checks passed before publication. Seven new tests open real NSWindow sheets using the production presenter, check displayed import/review/error content, same-sheet handoff, library installation, pending-review recovery, retry, correction retention and save failure. Packaging verifies resources, architecture and the app signature before and after ZIP extraction. Test recognition responses are simulated; no paid live-model requests or user PDFs were used.
+          The macOS build, core/app regression tests and native integration checks passed before publication. Tests cover exact tuplet timing, fine/dotted notes, independent voices, ties, MusicXML round trips, project compatibility, bounded AI triplet edits, WebKit tuplet engraving/highlighting and PDF/MP3 export. Existing import-handoff tests remain enabled. Recognition and planning responses are simulated; no paid live-model requests or user PDFs were used.
 
           Source commit: $GITHUB_SHA
           Build: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID
