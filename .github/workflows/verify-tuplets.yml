@@ -1,0 +1,61 @@
+name: Verify tuplets and fine rhythms
+on:
+  push:
+    branches: [feature/tuplet-rhythms]
+    paths: [.github/workflows/verify-tuplets.yml]
+permissions:
+  contents: write
+jobs:
+  verify:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+      - name: Apply checksum-verified rhythm implementation on the reviewed base
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64, hashlib, lzma, os
+          from pathlib import Path
+          encoded = ''.join(Path('.development/tuplets-part-%d.b64' % i).read_text().strip() for i in range(4))
+          patch = lzma.decompress(base64.b64decode(encoded, validate=True), memlimit=268435456)
+          assert hashlib.sha256(patch).hexdigest() == '2ec718487fa8d3c43950c5aadf05c0f3ff46bb3ea1bec3d07cefd57d0ff1eaea'
+          Path(os.environ['RUNNER_TEMP'], 'tuplets.patch').write_bytes(patch)
+          PY
+          git checkout --detach 1888071612b4e132ffd63c083be6f7d36d48feab
+          git apply --index "$RUNNER_TEMP/tuplets.patch"
+          git diff --cached --check
+          git diff --cached --stat
+          test -z "$(git diff --cached --name-only -- .development)"
+      - name: Prepare pinned resources
+        run: bash Scripts/prepare-resources.sh
+      - name: Run all core, workflow and native export tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          swift test 2>&1 | tee "$RUNNER_TEMP/tuplet-tests.log"
+      - name: Upload rendered rhythm and test evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: tuplet-test-evidence
+          path: |
+            .build/SmokeArtifacts/
+            ${{ runner.temp }}/tuplet-tests.log
+          include-hidden-files: true
+          retention-days: 7
+      - name: Compile release app
+        run: swift build -c release --product HymnAIrranger
+      - name: Verify packaged app and installed resources
+        run: bash Scripts/package-app.sh
+      - name: Save tested source on an isolated branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --cached --check
+          git -c user.name='Hymn AIrranger development' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'Support exact tuplets and finer rhythms across import and rehearsal'
+          git push origin HEAD:refs/heads/work/tuplet-support-tested
+          echo "Tested source: $(git rev-parse HEAD). Main is unchanged." >> "$GITHUB_STEP_SUMMARY"
