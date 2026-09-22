@@ -27,9 +27,12 @@ jobs:
           PY
           git checkout --detach 1888071612b4e132ffd63c083be6f7d36d48feab
           git apply --index "$RUNNER_TEMP/tuplets.patch"
+          # The Actions token may commit application code, not workflow edits.
+          # Release-note workflow changes are applied separately by the authorized developer.
+          git restore --source=HEAD --staged --worktree .github/workflows/macos.yml
           git diff --cached --check
           git diff --cached --stat
-          test -z "$(git diff --cached --name-only -- .development)"
+          test -z "$(git diff --cached --name-only -- .development .github)"
       - name: Prepare pinned resources
         run: bash Scripts/prepare-resources.sh
       - name: Run all core, workflow and native export tests
@@ -56,6 +59,7 @@ jobs:
         run: |
           set -euo pipefail
           git diff --cached --check
+          test -z "$(git diff --cached --name-only -- .github)"
           git -c user.name='Hymn AIrranger development' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'Support exact tuplets and finer rhythms across import and rehearsal'
           git push origin HEAD:refs/heads/work/tuplet-support-tested
           echo "Tested source: $(git rev-parse HEAD). Main is unchanged." >> "$GITHUB_STEP_SUMMARY"
