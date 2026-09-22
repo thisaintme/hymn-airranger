@@ -70,8 +70,8 @@ public enum KeyStore {
 
 public enum MP3Encoder {
     public static func encode(_ audio: RenderedAudio) throws -> Data {
-        guard let url = Bundle.module.url(forResource:"lame.all",withExtension:"js",subdirectory:"Web/Vendor"),
-              let context = JSContext() else { throw HymnError.invalid("The MP3 encoder is missing. Run Build App.command to install the pinned resources and rebuild.") }
+        guard let url = AppResources.bundle?.url(forResource:"lame.all",withExtension:"js",subdirectory:"Web/Vendor"),
+              let context = JSContext() else { throw HymnError.invalid("The MP3 encoder is missing. Download a fresh copy of the app, or rebuild it from source.") }
         var problem: String?
         context.exceptionHandler = { _,value in problem = value?.toString() ?? "JavaScript error" }
         context.evaluateScript(try String(contentsOf:url,encoding:.utf8))

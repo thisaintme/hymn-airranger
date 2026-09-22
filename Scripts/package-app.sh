@@ -53,7 +53,7 @@ if find "$APP" -type f \( -iname '*.ttf' -o -iname '*.otf' -o -iname '*.woff' -o
   exit 1
 fi
 /usr/bin/plutil -lint "$APP/Contents/Info.plist"
-/usr/bin/lipo -verify_arch arm64 "$APP/Contents/MacOS/HymnAIrranger"
+/usr/bin/lipo "$APP/Contents/MacOS/HymnAIrranger" -verify_arch arm64
 # No Developer ID credentials are needed for the development alpha. Do not claim notarization.
 /usr/bin/codesign --force --deep --sign - "$APP"
 /usr/bin/codesign --verify --deep --strict "$APP"
@@ -64,10 +64,19 @@ rm -f "$ZIP" "$ZIP.sha256"
 cp "$ROOT/Docs/Download and test.md" "$DIST/INSTALL.md"
 # Re-extract outside the build directory, then check the actual deliverable.
 CHECK="$(mktemp -d "${TMPDIR:-/tmp}/hymn-package.XXXXXX")"
-trap 'rm -rf "$CHECK"' EXIT
+HIDDEN_BUNDLE="$CHECK/build-time-resources.bundle"
+cleanup() {
+  if [ -d "$HIDDEN_BUNDLE" ] && [ ! -e "$BUNDLE" ]; then mv "$HIDDEN_BUNDLE" "$BUNDLE"; fi
+  rm -rf "$CHECK"
+}
+trap cleanup EXIT
 /usr/bin/ditto -x -k "$ZIP" "$CHECK"
 UNPACKED="$CHECK/Hymn AIrranger.app"
 test -x "$UNPACKED/Contents/MacOS/HymnAIrranger"
 test -s "$UNPACKED/Contents/Resources/$RESOURCE_NAME/Web/index.html"
 /usr/bin/codesign --verify --deep --strict "$UNPACKED"
-echo "Packaged and archive-verified: $ZIP"
+# Simulate a different Mac: the absolute SwiftPM build-time path is unavailable.
+mv "$BUNDLE" "$HIDDEN_BUNDLE"
+"$UNPACKED/Contents/MacOS/HymnAIrranger" --verify-resources
+mv "$HIDDEN_BUNDLE" "$BUNDLE"
+echo "Packaged, archive-verified, and resource-smoke-tested: $ZIP"

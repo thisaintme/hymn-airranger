@@ -86,8 +86,8 @@ struct ScoreWebView: NSViewRepresentable {
         let view = WKWebView(frame:.zero,configuration:config)
         view.navigationDelegate = controller
         controller.attach(view)
-        if let url = Bundle.module.url(forResource:"index",withExtension:"html",subdirectory:"Web") { view.loadFileURL(url,allowingReadAccessTo:url.deletingLastPathComponent()) }
-        else { controller.error = "The score resources are missing. Build using Build App.command." }
+        if let url = AppResources.bundle?.url(forResource:"index",withExtension:"html",subdirectory:"Web") { view.loadFileURL(url,allowingReadAccessTo:url.deletingLastPathComponent()) }
+        else { controller.error = "The score resources are missing. Download a fresh copy of the app, or rebuild it from source." }
         return view
     }
     func updateNSView(_ nsView: WKWebView, context: Context) {}
