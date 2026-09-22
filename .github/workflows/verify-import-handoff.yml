@@ -1,0 +1,64 @@
+name: Verify import review handoff
+on:
+  push:
+    branches: [fix/import-review-handoff]
+    paths: [.github/workflows/verify-import-handoff.yml]
+permissions:
+  contents: write
+jobs:
+  verify:
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+      - name: Prepare exact reviewed changes without modifying main
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp .development/apply-handoff.py "$RUNNER_TEMP/apply-handoff.py"
+          cp .development/AppPresentation.swift "$RUNNER_TEMP/AppPresentation.swift"
+          cp .development/ImportPresentationTests.swift "$RUNNER_TEMP/ImportPresentationTests.swift"
+          git checkout --detach 8b88b5f0173e55815e14a7467165c27ab124a3bb
+          python3 "$RUNNER_TEMP/apply-handoff.py"
+          cp "$RUNNER_TEMP/AppPresentation.swift" Sources/HymnAIrranger/AppPresentation.swift
+          cp "$RUNNER_TEMP/ImportPresentationTests.swift" Tests/HymnAppTests/ImportPresentationTests.swift
+          cat > "$RUNNER_TEMP/expected.sha256" <<'EOF'
+          0b37781bdbadd46b5c4f3500ab30ba454726e149059f0de323d36ef6d2f20583  Sources/HymnAIrranger/App.swift
+          6ecac88c5dd04e7563fa6cd7cdbdff79027d4dedd6e18d7f3b584a0def63fe6a  Sources/HymnAIrranger/AppModel+ChoirImport.swift
+          f4dffa0a0e0c9d3bee1d5a3469dfba051cdd8a7b496154fdc917352ab1eb847e  Sources/HymnAIrranger/ChoirReviewView.swift
+          cb49673958015f778e333a20cd63eef808c4e848c50589b261a8e127196bc298  Sources/HymnAIrranger/Editors.swift
+          9738b2c04ac99c032251ae70b3925bd3df86b9a9e21339245515f98c9272ef9b  Sources/HymnAIrranger/AppPresentation.swift
+          a7e35bf632a7aaca6717a26a847202948b5fd121fbc6faf61a4b28792c06fc38  Tests/HymnAppTests/ImportPresentationTests.swift
+          698db933030b9e628cc17c0b78e78295247e76f9a2955170d5102db1e65ae7f2  VERSION
+          88040bcf19888119f3d496e5249f5ae8de1f103212e9b55597caf2380f79412b  Docs/Alpha 6 fixes.md
+          EOF
+          shasum -a 256 -c "$RUNNER_TEMP/expected.sha256"
+          git diff --check
+      - name: Prepare pinned resources
+        run: bash Scripts/prepare-resources.sh
+      - name: Run all core, model and actual-sheet regression tests
+        run: swift test
+      - name: Upload native presentation evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: import-handoff-evidence
+          path: .build/SmokeArtifacts/
+          include-hidden-files: true
+          retention-days: 7
+      - name: Build release application
+        run: swift build -c release --product HymnAIrranger
+      - name: Verify app packaging and installed resources
+        run: bash Scripts/package-app.sh
+      - name: Save passing source on an isolated branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add Sources/HymnAIrranger/App.swift Sources/HymnAIrranger/AppModel+ChoirImport.swift Sources/HymnAIrranger/AppPresentation.swift Sources/HymnAIrranger/ChoirReviewView.swift Sources/HymnAIrranger/Editors.swift Tests/HymnAppTests/ImportPresentationTests.swift 'Docs/Alpha 6 fixes.md' VERSION
+          git diff --cached --check
+          test -z "$(git diff --cached --name-only -- .github)"
+          git -c user.name='Hymn AIrranger development' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'Fix import-to-review presentation, expose errors, and resume pending transcriptions'
+          git push origin HEAD:refs/heads/work/import-handoff-tested
+          echo "Tested source: $(git rev-parse HEAD). Main is unchanged." >> "$GITHUB_STEP_SUMMARY"
