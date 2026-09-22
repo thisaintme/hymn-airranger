@@ -8,7 +8,23 @@
         try {
           events = payload.events; active = []; activeLyrics = []; page = null;
           toolkit.setOptions({pageWidth:2100,pageHeight:2970,pageMarginTop:120,pageMarginBottom:140,pageMarginLeft:130,pageMarginRight:110,scale:40,adjustPageHeight:false,breaks:'auto',spacingStaff:12,spacingSystem:14,lyricSize:5,header:'auto',footer:'none',svgViewBox:true});
-          if (!toolkit.loadData(payload.mei)) throw new Error('The engraving engine rejected the score.');
+          // MEI 5 uses child labels and keysig, not the legacy staff label/key.sig attributes.
+          // Normalize our escaped musical payload before engraving so printed parts are identifiable.
+          const documentXML = new DOMParser().parseFromString(payload.mei, 'application/xml');
+          if (documentXML.querySelector('parsererror')) throw new Error('The score contains invalid musical XML.');
+          documentXML.querySelectorAll('staffDef').forEach(staff => {
+            [['label', 'label'], ['label.abbr', 'labelAbbr']].forEach(([attribute, element]) => {
+              if (!staff.hasAttribute(attribute)) return;
+              const node = documentXML.createElementNS(staff.namespaceURI, element);
+              node.textContent = staff.getAttribute(attribute);
+              staff.append(node); staff.removeAttribute(attribute);
+            });
+          });
+          documentXML.querySelectorAll('[key\\.sig]').forEach(definition => {
+            definition.setAttribute('keysig', definition.getAttribute('key.sig'));
+            definition.removeAttribute('key.sig');
+          });
+          if (!toolkit.loadData(new XMLSerializer().serializeToString(documentXML))) throw new Error('The engraving engine rejected the score.');
           const host = document.getElementById('pages'); host.replaceChildren();
           const total = toolkit.getPageCount();
           for (let i = 1; i <= total; ++i) {
