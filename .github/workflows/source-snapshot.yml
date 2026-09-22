@@ -1,0 +1,19 @@
+name: Rehearsal import source snapshot
+on:
+  push:
+    branches: [feature/existing-arrangement-import]
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - run: git archive --format=tar HEAD > source.tar
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: rehearsal-import-source
+          path: source.tar
+          retention-days: 1
