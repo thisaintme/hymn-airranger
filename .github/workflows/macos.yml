@@ -97,7 +97,7 @@ jobs:
           fi
           cat > release-notes.md <<EOF
           ## What's changed
-          Explicit no-change/unsupported handling; missing-voice checks; bounded independent supporting rhythms; p/mp/mf/f loudness spans; measured change reports; and an Export prompt log action. Source melody remains locked. Expression-edited projects use format 2 (alpha 3+); back up older projects before updating. See Docs/Alpha 3 fixes.md for limitations.
+          Renamed Lower voice to **Bass**, abbreviated **B**, across the interface, newly exported scores and rehearsal-track filenames. Existing notes, rhythms, dynamics, vocal ranges, saved projects and histories are unchanged. Both Bass and lower voice remain accepted request aliases. No migration or API-key reset is needed. Re-export previously generated files for the new labels. See Docs/Alpha 4 fixes.md.
 
           ## Download and test
           Download **Hymn-AIrranger-macOS-arm64.zip** below, extract it, and move **Hymn AIrranger.app** to Applications.
