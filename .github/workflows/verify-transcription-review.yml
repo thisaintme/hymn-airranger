@@ -1,0 +1,60 @@
+name: Verify incomplete tuplet review
+on:
+  push:
+    branches: [fix/tuplet-transcription-review]
+    paths: [.github/workflows/verify-transcription-review.yml]
+permissions:
+  contents: write
+jobs:
+  verify:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+      - name: Apply exact reviewed source changes without touching main
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64, hashlib, lzma, os
+          from pathlib import Path
+          encoded = ''.join(Path('.development/transcription-review-%d.b64' % i).read_text().strip() for i in range(3))
+          patch = lzma.decompress(base64.b64decode(encoded, validate=True), memlimit=268435456)
+          assert hashlib.sha256(patch).hexdigest() == '0cb688f6781c3f5b48eb861ae49c7fc5c81279d01f6ba0f4b1773f459604261c'
+          Path(os.environ['RUNNER_TEMP'], 'review.patch').write_bytes(patch)
+          PY
+          git checkout --detach f1347d77f5d385065bd3635621a2a68b276aa2cb
+          git apply --index "$RUNNER_TEMP/review.patch"
+          git diff --cached --check
+          test -z "$(git diff --cached --name-only -- .github .development)"
+      - name: Prepare pinned resources
+        run: bash Scripts/prepare-resources.sh
+      - name: Run all core and native review/export tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          swift test 2>&1 | tee "$RUNNER_TEMP/transcription-review-tests.log"
+      - name: Upload review screenshots and diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: transcription-review-evidence
+          path: |
+            .build/SmokeArtifacts/
+            ${{ runner.temp }}/transcription-review-tests.log
+          include-hidden-files: true
+          retention-days: 7
+      - name: Compile release app
+        run: swift build -c release --product HymnAIrranger
+      - name: Check packaging and extracted app
+        run: bash Scripts/package-app.sh
+      - name: Save passing implementation on a separate branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --cached --check
+          git -c user.name='Hymn AIrranger development' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'Keep incomplete tuplet transcriptions reviewable with exact explicit repairs and diagnostics'
+          git push origin HEAD:refs/heads/work/transcription-rhythm-tested
+          echo "Tested source: $(git rev-parse HEAD). Main is unchanged." >> "$GITHUB_STEP_SUMMARY"
