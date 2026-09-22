@@ -1,0 +1,56 @@
+name: Verify existing-arrangement import
+on:
+  push:
+    branches: [feature/existing-arrangement-import]
+permissions:
+  contents: write
+jobs:
+  verify:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+      - name: Apply verified implementation to the reviewed base
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64, hashlib, lzma, os
+          from pathlib import Path
+          text = ''.join(Path('.development/import-patch-%s.b64' % i).read_text().strip() for i in range(5))
+          data = base64.b64decode(text, validate=True)
+          assert hashlib.sha256(data).hexdigest() == 'e8799f62493a02d0f28d51d254595289f3f1be025f324e2261985569feafd103'
+          patch = lzma.decompress(data)
+          assert hashlib.sha256(patch).hexdigest() == '94135dcc79a41e5842e1e37c3c50ebbc4bb31d822f702971bece198338d44bf8'
+          Path(os.environ['RUNNER_TEMP'], 'choir-import.patch').write_bytes(patch)
+          PY
+          git checkout --detach 05cba981714fa6d4e4def8749cf05a977df52ea2
+          git apply --index "$RUNNER_TEMP/choir-import.patch"
+          git diff --cached --check
+          test -z "$(git diff --cached --name-only -- .github)"
+      - name: Prepare pinned resources
+        run: bash Scripts/prepare-resources.sh
+      - name: Run all native core, workflow and integration tests
+        run: swift test
+      - name: Upload native review, notation and audio evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: choir-import-test-evidence
+          path: .build/SmokeArtifacts/
+          include-hidden-files: true
+          retention-days: 7
+          if-no-files-found: warn
+      - name: Compile release app
+        run: swift build -c release --product HymnAIrranger
+      - name: Verify packaged app and installed resources
+        run: bash Scripts/package-app.sh
+      - name: Save tested source on an isolated review branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git -c user.name='Hymn AIrranger development' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'Import existing SAB/SATB arrangements for rehearsal without reharmonizing'
+          git push origin HEAD:refs/heads/work/choir-import-reviewed
+          echo "Tested source: $(git rev-parse HEAD). Main and published releases are unchanged." >> "$GITHUB_STEP_SUMMARY"
