@@ -1,0 +1,74 @@
+Building for debugging...
+[0/4] Write sources
+[1/4] Write swift-version--1BA0962812E73E12.txt
+[3/5] Compiling HymnCoreTests CoreTests.swift
+[4/5] Emitting module HymnCoreTests
+[5/12] /mnt/data/HymnAIrranger/.build/x86_64-unknown-linux-gnu/debug/HymnAIrrangerPackageDiscoveredTests.derived/all-discovered-tests.swift
+[6/13] Write sources
+[7/13] Wrapping AST for HymnCoreTests for debugging
+[9/16] Compiling HymnAIrrangerPackageDiscoveredTests all-discovered-tests.swift
+[10/16] Compiling HymnAIrrangerPackageDiscoveredTests HymnCoreTests.swift
+[11/16] Emitting module HymnAIrrangerPackageDiscoveredTests
+[12/17] /mnt/data/HymnAIrranger/.build/x86_64-unknown-linux-gnu/debug/HymnAIrrangerPackageTests.derived/runner.swift
+[13/18] Write sources
+[14/18] Wrapping AST for HymnAIrrangerPackageDiscoveredTests for debugging
+[16/20] Emitting module HymnAIrrangerPackageTests
+[17/20] Compiling HymnAIrrangerPackageTests runner.swift
+[18/20] Write Objects.LinkFileList
+[19/20] Linking HymnAIrrangerPackageTests.xctest
+Build complete! (1.86s)
+Test Suite 'All tests' started at 2026-09-21 21:29:12.074
+Test Suite 'debug.xctest' started at 2026-09-21 21:29:12.076
+Test Suite 'CoreTests' started at 2026-09-21 21:29:12.076
+Test Case 'CoreTests.testArrangementPreservesMelody' started at 2026-09-21 21:29:12.076
+Test Case 'CoreTests.testArrangementPreservesMelody' passed (0.008 seconds)
+Test Case 'CoreTests.testLyricsRejectOverflowAndPreserveUmlauts' started at 2026-09-21 21:29:12.083
+Test Case 'CoreTests.testLyricsRejectOverflowAndPreserveUmlauts' passed (0.001 seconds)
+Test Case 'CoreTests.testRejectBrokenData' started at 2026-09-21 21:29:12.084
+Test Case 'CoreTests.testRejectBrokenData' passed (0.004 seconds)
+Test Case 'CoreTests.testSATBAndSABAreRevoiced' started at 2026-09-21 21:29:12.088
+Test Case 'CoreTests.testSATBAndSABAreRevoiced' passed (0.05 seconds)
+Test Case 'CoreTests.testScopePreservesOutsidePassage' started at 2026-09-21 21:29:12.138
+Test Case 'CoreTests.testScopePreservesOutsidePassage' passed (0.006 seconds)
+Test Case 'CoreTests.testVersionBranchesAndRoundTrip' started at 2026-09-21 21:29:12.144
+Test Case 'CoreTests.testVersionBranchesAndRoundTrip' passed (0.011 seconds)
+Test Suite 'CoreTests' passed at 2026-09-21 21:29:12.155
+	 Executed 6 tests, with 0 failures (0 unexpected) in 0.079 (0.079) seconds
+Test Suite 'InterchangeTests' started at 2026-09-21 21:29:12.155
+Test Case 'InterchangeTests.testAudioProducesValidRIFFAndSoloDiffers' started at 2026-09-21 21:29:12.155
+Test Case 'InterchangeTests.testAudioProducesValidRIFFAndSoloDiffers' passed (0.067 seconds)
+Test Case 'InterchangeTests.testMEIIdentifiersAndXMLTextEscaping' started at 2026-09-21 21:29:12.222
+Test Case 'InterchangeTests.testMEIIdentifiersAndXMLTextEscaping' passed (0.001 seconds)
+Test Case 'InterchangeTests.testMusicXMLRoundTripPreservesPitchesDurationsLyrics' started at 2026-09-21 21:29:12.223
+Test Case 'InterchangeTests.testMusicXMLRoundTripPreservesPitchesDurationsLyrics' passed (0.002 seconds)
+Test Case 'InterchangeTests.testPitchDetectorAndSilence' started at 2026-09-21 21:29:12.225
+Test Case 'InterchangeTests.testPitchDetectorAndSilence' passed (0.001 seconds)
+Test Case 'InterchangeTests.testResponseRefusalAndIncompleteFailClosed' started at 2026-09-21 21:29:12.227
+Test Case 'InterchangeTests.testResponseRefusalAndIncompleteFailClosed' passed (0.0 seconds)
+Test Case 'InterchangeTests.testTiesAndPickupRoundTrip' started at 2026-09-21 21:29:12.227
+Test Case 'InterchangeTests.testTiesAndPickupRoundTrip' passed (0.001 seconds)
+Test Suite 'InterchangeTests' passed at 2026-09-21 21:29:12.228
+	 Executed 6 tests, with 0 failures (0 unexpected) in 0.072 (0.072) seconds
+Test Suite 'SafetyAndCompatibilityTests' started at 2026-09-21 21:29:12.228
+Test Case 'SafetyAndCompatibilityTests.testConfiguredRangesInBothVoicings' started at 2026-09-21 21:29:12.228
+Test Case 'SafetyAndCompatibilityTests.testConfiguredRangesInBothVoicings' passed (0.048 seconds)
+Test Case 'SafetyAndCompatibilityTests.testCorruptProjectHistoryFailsClosed' started at 2026-09-21 21:29:12.276
+Test Case 'SafetyAndCompatibilityTests.testCorruptProjectHistoryFailsClosed' passed (0.013 seconds)
+Test Case 'SafetyAndCompatibilityTests.testInvalidPartPitchDoesNotEnterIntervalArithmetic' started at 2026-09-21 21:29:12.289
+Test Case 'SafetyAndCompatibilityTests.testInvalidPartPitchDoesNotEnterIntervalArithmetic' passed (0.005 seconds)
+Test Case 'SafetyAndCompatibilityTests.testSourceAttachmentAndApprovalRoundTrip' started at 2026-09-21 21:29:12.293
+Test Case 'SafetyAndCompatibilityTests.testSourceAttachmentAndApprovalRoundTrip' passed (0.006 seconds)
+Test Case 'SafetyAndCompatibilityTests.testTranspositionPreservesRhythmAndLyricsAndUpdatesKey' started at 2026-09-21 21:29:12.299
+Test Case 'SafetyAndCompatibilityTests.testTranspositionPreservesRhythmAndLyricsAndUpdatesKey' passed (0.002 seconds)
+Test Case 'SafetyAndCompatibilityTests.testUnsupportedMusicXMLFailsInsteadOfFlattening' started at 2026-09-21 21:29:12.301
+Test Case 'SafetyAndCompatibilityTests.testUnsupportedMusicXMLFailsInsteadOfFlattening' passed (0.0 seconds)
+Test Suite 'SafetyAndCompatibilityTests' passed at 2026-09-21 21:29:12.301
+	 Executed 6 tests, with 0 failures (0 unexpected) in 0.074 (0.074) seconds
+Test Suite 'debug.xctest' passed at 2026-09-21 21:29:12.301
+	 Executed 18 tests, with 0 failures (0 unexpected) in 0.226 (0.226) seconds
+Test Suite 'All tests' passed at 2026-09-21 21:29:12.301
+	 Executed 18 tests, with 0 failures (0 unexpected) in 0.226 (0.226) seconds
+◇ Test run started.
+↳ Testing Library Version: 6.2.1 (c9d57c83568b06d)
+↳ Target Platform: x86_64-unknown-linux-gnu
+✔ Test run with 0 tests in 0 suites passed after 0.001 seconds.

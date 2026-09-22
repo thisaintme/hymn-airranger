@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleExecutable</key><string>HymnAIrranger</string>
+<key>CFBundleIdentifier</key><string>org.hymnairranger.mac</string>
+<key>CFBundleName</key><string>Hymn AIrranger</string>
+<key>CFBundleDisplayName</key><string>Hymn AIrranger</string>
+<key>CFBundlePackageType</key><string>APPL</string>
+<key>CFBundleShortVersionString</key><string>0.1.0</string>
+<key>CFBundleVersion</key><string>1</string>
+<key>LSMinimumSystemVersion</key><string>14.0</string>
+<key>NSHighResolutionCapable</key><true/>
+<key>NSMicrophoneUsageDescription</key><string>Record an unaccompanied melody to transcribe locally. Recordings are not sent to AI.</string>
+<key>NSPrincipalClass</key><string>NSApplication</string>
+<key>UTExportedTypeDeclarations</key><array><dict>
+<key>UTTypeIdentifier</key><string>org.hymnairranger.project</string>
+<key>UTTypeDescription</key><string>Hymn AIrranger Project</string>
+<key>UTTypeConformsTo</key><array><string>public.json</string></array>
+<key>UTTypeTagSpecification</key><dict><key>public.filename-extension</key><array><string>hymn</string></array></dict>
+</dict></array>
+</dict></plist>

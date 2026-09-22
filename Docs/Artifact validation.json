@@ -1,0 +1,20 @@
+{
+  "A quiet song.musicxml": {
+    "well_formed_XML": true,
+    "root": "score-partwise",
+    "elements": 742
+  },
+  "A quiet song.mei": {
+    "well_formed_XML": true,
+    "root": "{http://www.music-encoding.org/ns/mei}mei",
+    "elements": 263
+  },
+  "full_choir_wave": {
+    "sample_rate": 22050,
+    "channels": 1,
+    "duration_seconds": 26.591,
+    "sample_width": 2
+  },
+  "Info.plist": "Parsed successfully",
+  "musical_warnings": []
+}

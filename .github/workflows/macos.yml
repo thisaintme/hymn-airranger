@@ -1,0 +1,20 @@
+name: macOS build and core tests
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare pinned resources
+        run: bash Scripts/prepare-resources.sh
+      - name: Test shared music engine and compile native target
+        run: swift test
+      - name: Compile native app
+        run: swift build -c release --product HymnAIrranger
+# Check this repository's Actions tab for actual run results.
+# A successful build does not replace the interactive Mac acceptance checklist.
