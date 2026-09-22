@@ -8,13 +8,102 @@ permissions:
 jobs:
   build:
     runs-on: macos-15
+    timeout-minutes: 20
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Record alpha version and toolchain
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(tr -d '\r\n' < VERSION)"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+-alpha\.[0-9]+$ ]]
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          test "$(uname -m)" = arm64
+          xcrun swift --version
       - name: Prepare pinned resources
         run: bash Scripts/prepare-resources.sh
       - name: Test shared music engine and compile native target
         run: swift test
       - name: Compile native app
         run: swift build -c release --product HymnAIrranger
-# Check this repository's Actions tab for actual run results.
-# A successful build does not replace the interactive Mac acceptance checklist.
+      - name: Package app and verify the extracted archive
+        run: bash Scripts/package-app.sh
+      - name: Upload downloadable app
+        id: upload
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: Hymn-AIrranger-Apple-Silicon
+          path: Build/Distribution/
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+      - name: Download instructions
+        env:
+          ARTIFACT_URL: ${{ steps.upload.outputs.artifact-url }}
+        run: |
+          {
+            echo '## Download the Apple Silicon app'
+            echo "[Download the build artifact]($ARTIFACT_URL) (GitHub sign-in required)."
+            echo 'Extract the artifact, then extract Hymn-AIrranger-macOS-arm64.zip.'
+            echo 'Move Hymn AIrranger.app to Applications. No Xcode, Terminal or API key is required for the original study.'
+            echo 'Requires macOS 14+. Development signature only; not Apple notarized. See INSTALL.md.'
+            echo 'The archive and signature are checked; interactive playback, PDF export and microphone checks remain manual.'
+          } >> "$GITHUB_STEP_SUMMARY"
+  publish:
+    name: Publish a new alpha version
+    needs: build
+    # Never give pull requests or other branches a release-writing job.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    concurrency:
+      group: alpha-release-${{ needs.build.outputs.version }}
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RELEASE_TAG: v${{ needs.build.outputs.version }}
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: Hymn-AIrranger-Apple-Silicon
+          path: distribution
+      - name: Publish without replacing an existing release
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd distribution
+          sha256sum -c Hymn-AIrranger-macOS-arm64.zip.sha256
+          # VERSION is an opt-in release marker. Normal source edits keep their CI
+          # artifacts but never replace the bytes of an already-published version.
+          if gh release view "$RELEASE_TAG" --json tagName > /dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists; leaving it unchanged." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          cat > release-notes.md <<EOF
+          ## Download and test
+          Download **Hymn-AIrranger-macOS-arm64.zip** below, extract it, and move **Hymn AIrranger.app** to Applications.
+          Requires **Apple Silicon and macOS 14 or later**. No Xcode, build tools, server, or API key is needed to try the original study.
+
+          **Development alpha: ad-hoc signed, NOT Apple-notarized.** Read INSTALL.md before opening. Do not disable Gatekeeper globally. This is not a choir-ready production release.
+
+          Build and 18 core tests passed on the macOS runner. Packaging verifies resources, architecture, and the app signature before and after ZIP extraction. Interactive music rendering, playback, PDF/MP3 export, microphone, and live AI still need manual acceptance testing.
+
+          Source commit: $GITHUB_SHA
+          Build: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID
+          The source archives below correspond to this release. Third-party source downloads, licenses, and replacement instructions are in Docs/Third-party notices.md at the release tag and inside the app resources.
+          EOF
+          # Upload all assets to a draft first, avoiding publicly visible partial releases.
+          gh release create "$RELEASE_TAG" --target "$GITHUB_SHA" \
+            --title "Hymn AIrranger $RELEASE_TAG (Apple Silicon alpha)" \
+            --draft --prerelease --latest=false --notes-file release-notes.md \
+            Hymn-AIrranger-macOS-arm64.zip Hymn-AIrranger-macOS-arm64.zip.sha256 INSTALL.md
+          gh release edit "$RELEASE_TAG" --draft=false
+          echo "Published [$RELEASE_TAG]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$RELEASE_TAG)" >> "$GITHUB_STEP_SUMMARY"

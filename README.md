@@ -1,7 +1,11 @@
 # Hymn AIrranger
-## A choir-first macOS arranger · v0.1 development source alpha
+## A choir-first macOS arranger · v0.1 development alpha
 
-**This is application source, not a finished installer.** The shared Swift music engine has been compiled and tested on Linux. The macOS-only application has been syntax-checked, but has not been compiled with the macOS SDK or run on a Mac. Live AI, PDF engraving/export, Keychain, microphone, and the in-app MP3 encoder still need integration checks. Compilation fixes may be needed when the native target is first built.
+**Download the prebuilt app from [GitHub Releases](https://github.com/thisaintme/hymn-airranger/releases).** Choose **Hymn-AIrranger-macOS-arm64.zip** under Assets, not the automatically generated Source code archives. Extract it and move **Hymn AIrranger.app** to Applications. Requires Apple Silicon and macOS 14 or later; no Xcode, build tools, or API key is needed to try the original study.
+
+**Development alpha, not Apple-notarized.** Read [Download and test](Docs/Download%20and%20test.md) for installation, the macOS security warning, and a first-test checklist. Do not disable Gatekeeper globally. Each successful workflow also provides a downloadable app artifact; a new VERSION on main publishes a prerelease without overwriting an existing one.
+
+The native debug and release targets now compile on the macOS CI runner, where all 18 core tests pass. The packaging workflow additionally verifies resource inclusion, architecture, and signature preservation after ZIP extraction. These automated checks do not establish that interactive playback, PDF/MP3 export, Keychain, microphone, or live AI work correctly; the [Mac acceptance checklist](Docs/Mac%20acceptance%20checklist.md) remains necessary. Check the Actions run for the result of each new build.
 
 The goal is a quiet, approachable application for a German church choir of about 15 singers: eight sopranos, four altos, two tenors who are sometimes absent, and one lower singer who should not be treated as a deep bass. Piano accompanies the choir. This is not a worship-band workstation or a full notation editor.
 
@@ -11,7 +15,7 @@ The default is **Soprano · Alto · Lower voice**, with **Soprano · Alto · Ten
 
 The melody is explicitly reviewed before arrangement. Accepted edits save the complete musical result. Restoring an older version preserves the later versions. Printed notation and practice sound are derived from the same score data.
 
-## What is in this source alpha?
+## What is in this alpha?
 
 | Area | Implemented source | Validation status |
 | --- | --- | --- |
@@ -19,7 +23,7 @@ The melody is explicitly reviewed before arrangement. Accepted edits save the co
 | Versions | Full-score snapshots, branches, approval marker, project files | Round-trip and corrupt-history tests pass |
 | Interchange | MEI and MusicXML output; intentionally narrow single-melody MusicXML import | XML parses and supported round trips pass; not formal schema or renderer certification |
 | Practice sound | Original sample-free piano-like synthesizer, count-in, solo/emphasized mixes, slower speed | WAV generation and sample examples run here |
-| Native interface | Library, Arrange / Practice / Print, source viewer, melody/lyrics/range editors, assistant proposal review | Syntax checked only; not typechecked or run with macOS frameworks |
+| Native interface | Library, Arrange / Practice / Print, source viewer, melody/lyrics/range editors, assistant proposal review | Native debug/release compilation passes on macOS; interactive checks remain |
 | PDF input | Experimental cloud melody extraction, complete-file upload consent, mandatory review | API path written; no live PDF recognition benchmark |
 | Sung input | Local pitch detector, audio-file decoding and microphone recording UI | Synthetic 440 Hz / silence tests only; real singing and Mac audio decoding untested |
 | YouTube | Save and open a reference link | No downloading, source separation, or video transcription |
@@ -27,13 +31,13 @@ The melody is explicitly reviewed before arrangement. Accepted edits save the co
 | PDF output | Verovio score pages in WKWebView, A4 PDF export, revision stamps | Native export and pagination not run here |
 | MP3 export | JavaScriptCore + lamejs encoder, full/solo/emphasized rehearsal pack | Native encoder not run; included sample MP3s were encoded separately with FFmpeg |
 
-## Build on an Apple Silicon Mac
+## Optional: build from source on an Apple Silicon Mac
 
 Target: **macOS 14 or later**, Apple Silicon, an Apple toolchain supporting Swift 5.9 or later. An internet connection is needed for the initial resource download. No Python, Homebrew, or server is required by the native app.
 
 1. Clone this repository, or extract its source archive to a normal writable folder. Read this file and inspect `Build App.command` before running it.
 2. Install Apple's Command Line Tools or Xcode. When Command Line Tools are missing, the build explains how to install them with `xcode-select --install`.
-3. Run **Build App.command**. The script downloads two pinned resources, runs the tests, builds the native target, and assembles `Build/Hymn AIrranger.app`.
+3. Run **Build App.command**. The script downloads two pinned resources, runs the tests, builds the native target, and assembles `Build/Hymn AIrranger.app` plus `Build/Distribution/Hymn-AIrranger-macOS-arm64.zip`.
 4. On a successful build, Finder reveals that app. Open it, then work through `Docs/Mac acceptance checklist.md` using the included original study before importing choir material.
 
 The signature is **local ad-hoc**, not Developer ID signing or notarization. This archive is not an App Store release or a notarized DMG. Do not disable macOS security protections to run it. Build errors are recorded in `Build/build.log`; the script does not include API keys or song data in that log.
@@ -95,6 +99,6 @@ The Linux package builds the core and CLI only; a green Linux test does not esta
 
 ## Included documentation
 
-`Docs/Product plan.md` records the actual choir requirements and remaining work. `Docs/Architecture.md` describes the design. `Docs/Test report.md` records what was really run. `Docs/Mac acceptance checklist.md` is the native acceptance gate. `Docs/Third-party notices.md` records dependency sources and licensing follow-up. `Examples/READ ME.md` explains the original study and audio provenance. Generated MP3 demonstrations are available in the original downloadable source archive, not checked into this repository. The CLI can regenerate WAV practice tracks locally.
+`Docs/Product plan.md` records the actual choir requirements and remaining work. `Docs/Architecture.md` describes the design. `Docs/Test report.md` records what was really run. `Docs/Mac acceptance checklist.md` is the native acceptance gate. `Docs/Download and test.md` covers installation and releases. `Docs/Third-party notices.md` gives the exact dependency source downloads, licenses, and library-replacement instructions. `Examples/READ ME.md` explains the original study and audio provenance. Generated MP3 demonstrations are available in the original downloadable source archive, not checked into this repository. The CLI can regenerate WAV practice tracks locally.
 
 Original application source is under the MIT license in `LICENSE`. Dependencies retain their own licenses. No existing hymn melody, copyrighted hymn text, commercial sound library, or font file is included in this source archive.
