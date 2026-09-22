@@ -29,7 +29,7 @@ public enum Synthesizer {
         guard [22050,44100].contains(sampleRate), speed.isFinite, (0.5...1.5).contains(speed), mix.gains.values.allSatisfy({ $0.isFinite && (0...1).contains($0) }) else { throw HymnError.invalid("Unsupported playback settings.") }
         let t = score.tune, end = endTick ?? t.totalTicks
         guard startTick >= 0, end > startTick, end <= t.totalTicks else { throw HymnError.invalid("Choose a valid playback passage.") }
-        let secondsPerTick = 60.0 / (Double(t.tempo) * speed * 480.0)
+        let secondsPerTick = 60.0 / (Double(t.tempo) * speed * Double(t.quarter))
         let lead = countIn ? Double(t.barTicks) * secondsPerTick : 0
         let duration = Double(end - startTick) * secondsPerTick + lead + 0.25
         var samples = [Double](repeating: 0, count: Int(ceil(duration * Double(sampleRate))))
@@ -50,7 +50,7 @@ public enum Synthesizer {
             }
         }
         if countIn {
-            let secondsPerBeat = Double(480 * 4 / t.beatUnit) * secondsPerTick
+            let secondsPerBeat = Double(t.quarter * 4 / t.beatUnit) * secondsPerTick
             for beat in 0..<t.beats { addTone(pitch: beat == 0 ? 84 : 79, at: Double(beat)*secondsPerBeat, duration: 0.06, gain: 0.7, click: true) }
         }
         for part in score.effectiveParts {

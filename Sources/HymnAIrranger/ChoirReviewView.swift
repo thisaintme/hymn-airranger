@@ -48,7 +48,7 @@ struct ChoirReviewView: View {
             HStack(spacing: 14) {
                 if showSource, let originalPDF { SourcePDFView(data: originalPDF).frame(width: 380) }
                 if let index = draft.tracks.firstIndex(where: { $0.id == selectedID }) {
-                    ImportedLineEditor(track: $draft.tracks[index], totalTicks: draft.expectedTicks, audition: model.player.audition)
+                    ImportedLineEditor(track: $draft.tracks[index], totalTicks: draft.expectedTicks, quarter: draft.tune.quarter, audition: model.player.audition)
                         .id(selectedID)
                 }
             }.frame(maxHeight: .infinity)
@@ -100,7 +100,7 @@ struct ChoirReviewView: View {
                         ForEach([2, 4, 8, 16], id: \.self) { Text(String($0)).tag($0) }
                     }
                 }
-                Stepper("Pickup: \(Double(draft.tune.pickupTicks) / 480, specifier: "%.2g") quarter beats", value: $draft.tune.pickupTicks, in: 0...max(0, draft.tune.barTicks - 120), step: 120)
+                Stepper("Pickup: \(Double(draft.tune.pickupTicks) / Double(draft.tune.quarter), specifier: "%.2g") quarter beats", value: $draft.tune.pickupTicks, in: 0...max(0, draft.tune.barTicks - Rhythm.quantum(draft.tune.quarter)), step: Rhythm.quantum(draft.tune.quarter))
             }.frame(width: 330).font(.caption)
         }
     }
@@ -143,21 +143,22 @@ private struct ChoirMappingRow: View {
 private struct ImportedLineEditor: View {
     @Binding var track: ChoirImportTrack
     let totalTicks: Int
+    let quarter: Int
     let audition: (Int) -> Void
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text(track.voice.name).font(.headline)
-                Text("\(Double(track.notes.reduce(0) { $0 + $1.ticks }) / 480, specifier: "%.2g") quarter beats").font(.caption).foregroundStyle(.secondary)
+                Text("\(Double(track.notes.reduce(0) { $0 + $1.ticks }) / Double(quarter), specifier: "%.2g") quarter beats").font(.caption).foregroundStyle(.secondary)
                 Spacer()
-                Button("Add note") { track.notes.append(Note(pitch: track.notes.last?.pitch ?? 60)) }
-                Button("Add rest") { track.notes.append(Note(pitch: nil)) }
+                Button("Add note") { track.notes.append(Note(pitch: track.notes.last?.pitch ?? 60, ticks: quarter)) }
+                Button("Add rest") { track.notes.append(Note(pitch: nil, ticks: quarter)) }
             }.font(.caption)
-            Text("Durations are in quarter-note beats. Syllable edits below affect verse 1; other imported verses are preserved. Any edit resets the review check marks.").font(.caption2).foregroundStyle(.secondary)
+            Text("Duration menus show written note values and preserve tuplet ratios. Syllable edits below affect verse 1; other imported verses are preserved. Any edit resets the review check marks.").font(.caption2).foregroundStyle(.secondary)
             ScrollView {
                 LazyVStack(spacing: 4) {
                     ForEach($track.notes) { $note in
-                        MelodyNoteRow(note: $note, position: (track.notes.firstIndex { $0.id == note.id } ?? 0) + 1,
+                        MelodyNoteRow(note: $note, quarter: quarter, position: (track.notes.firstIndex { $0.id == note.id } ?? 0) + 1,
                             onPlay: { if let pitch = note.pitch { audition(pitch) } },
                             onDelete: { track.notes.removeAll { $0.id == note.id } })
                     }
@@ -166,7 +167,7 @@ private struct ImportedLineEditor: View {
             DisclosureGroup("Dynamics (\(track.dynamics.count))") {
                 ScrollView {
                     ForEach(track.dynamics.indices, id: \.self) { index in
-                        ImportedDynamicRow(marks: $track.dynamics, index: index, total: totalTicks)
+                        ImportedDynamicRow(marks: $track.dynamics, index: index, total: totalTicks, quarter: quarter)
                     }
                 }.frame(maxHeight: 95)
                 Button("Add marking") { track.dynamics.append(.init(tick: 0, level: .mf)) }.font(.caption)
@@ -179,10 +180,11 @@ private struct ImportedDynamicRow: View {
     @Binding var marks: [DynamicMark]
     var index: Int
     var total: Int
+    var quarter: Int
     var body: some View {
         HStack {
-            Stepper(value: Binding(get: { marks.indices.contains(index) ? marks[index].tick : 0 }, set: { if marks.indices.contains(index) { marks[index].tick = $0 } }), in: 0...max(0, total - 120), step: 120) {
-                Text("At quarter beat \(Double(marks.indices.contains(index) ? marks[index].tick : 0) / 480 + 1, specifier: "%.2g")")
+            Stepper(value: Binding(get: { marks.indices.contains(index) ? marks[index].tick : 0 }, set: { if marks.indices.contains(index) { marks[index].tick = $0 } }), in: 0...max(0, total - Rhythm.quantum(quarter)), step: Rhythm.quantum(quarter)) {
+                Text("At quarter beat \(Double(marks.indices.contains(index) ? marks[index].tick : 0) / Double(quarter) + 1, specifier: "%.2g")")
             }.frame(width: 200)
             Picker("Level", selection: Binding(get: { marks.indices.contains(index) ? marks[index].level : .mf }, set: { if marks.indices.contains(index) { marks[index].level = $0 } })) {
                 ForEach([DynamicLevel.p, .mp, .mf, .f], id: \.rawValue) { Text($0.rawValue).tag($0) }

@@ -51,7 +51,7 @@ struct ImportView: View {
         VStack(alignment:.leading,spacing:14) {
             HStack { Button("Choose PDF…") { choosePDF() }; Text(filename.isEmpty ? "One song · up to five pages · 10 MB maximum" : filename).font(.caption).foregroundStyle(.secondary) }
             if let data = pdfData { SourcePDFView(data:data).frame(maxHeight:.infinity).clipShape(RoundedRectangle(cornerRadius:10)) }
-            else { importPlaceholder("doc.richtext","Start with the clearest copy you have.",existingArrangement ? "Experimental recognition reads the existing SAB/SATB voices, not the piano. Shared-staff voice assignments and every part must be reviewed. The original pages stay unchanged. Repeats, tuplets and changing key/meter are not supported yet." : "Experimental AI recognition can confuse notes, lyrics and rhythms. You will listen to the extracted melody before using it.") }
+            else { importPlaceholder("doc.richtext","Start with the clearest copy you have.",existingArrangement ? "Experimental recognition reads the existing SAB/SATB voices, not the piano. Shared-staff voice assignments and every part must be reviewed. The original pages stay unchanged. Simple tuplets and finer notes are supported. Repeats, nested/cross-bar tuplets and changing key/meter are not supported yet." : "Experimental AI recognition can confuse notes, lyrics and rhythms. You will listen to the extracted melody before using it.") }
             HStack {
                 Text("The selected PDF is uploaded only after explicit confirmation.").font(.caption).foregroundStyle(.secondary)
                 Spacer()
@@ -89,7 +89,7 @@ struct ImportView: View {
     }
     private var xmlPane: some View {
         VStack(alignment:.leading,spacing:20) {
-            importPlaceholder("music.note.list","Already have digital notes?",existingArrangement ? "Read existing vocal lines from uncompressed MusicXML. Separate parts and explicitly encoded shared-staff voices are supported. Named piano/organ parts are excluded and reported. No cloud upload or AI key is needed. Repeats, tuplets, divisi chords and changing key/meter are rejected rather than flattened." : "Import an uncompressed .musicxml or .xml melody. The alpha reads the first part, so export a melody-only file first. Compressed MXL, repeats, polyphony and tuplets are not supported yet.")
+            importPlaceholder("music.note.list","Already have digital notes?",existingArrangement ? "Read existing vocal lines from uncompressed MusicXML. Separate parts and explicitly encoded shared-staff voices are supported. Named piano/organ parts are excluded and reported. No cloud upload or AI key is needed. Repeats, nested/cross-bar tuplets, divisi chords and changing key/meter are rejected rather than flattened." : "Import an uncompressed .musicxml or .xml melody. The alpha reads the first part, so export a melody-only file first. Compressed MXL, repeats, polyphony and nested tuplets are not supported yet.")
             Button(existingArrangement ? "Choose choir MusicXML…" : "Choose melody MusicXML…") {
                 let panel = NSOpenPanel(); panel.allowedContentTypes = [.xml,UTType(filenameExtension:"musicxml") ?? .xml]
                 if panel.runModal() == .OK, let url = panel.url { if existingArrangement { model.importChoirMusicXML(url) } else { model.importMusicXML(url) } }
@@ -130,7 +130,7 @@ struct MelodyEditor: View {
                     Stepper("Tempo: \(tune.tempo)",value:$tune.tempo,in:30...180)
                     HStack { Picker("Key",selection:$tune.fifths) { ForEach(-6...6,id:\.self) { fifths in Text(nameForKey(fifths)).tag(fifths) } }.frame(width:175); Toggle("Minor",isOn:$tune.minor) }
                     HStack { Stepper("Beats: \(tune.beats)",value:$tune.beats,in:1...12).frame(width:130); Picker("Unit",selection:$tune.beatUnit) { Text("2").tag(2); Text("4").tag(4); Text("8").tag(8); Text("16").tag(16) }.frame(width:120) }
-                    Stepper("Pickup: \(Double(tune.pickupTicks)/480,specifier:"%.2g") quarter beats",value:$tune.pickupTicks,in:0...max(0,tune.barTicks-120),step:120)
+                    Stepper("Pickup: \(Double(tune.pickupTicks)/Double(tune.quarter),specifier:"%.2g") quarter beats",value:$tune.pickupTicks,in:0...max(0,tune.barTicks-Rhythm.quantum(tune.quarter)),step:Rhythm.quantum(tune.quarter))
                 }.frame(width:320).font(.caption)
             }
             HStack {
@@ -138,22 +138,22 @@ struct MelodyEditor: View {
                 Button("Stop") { model.player.stop() }
                 if model.project.sources.contains(where:{ $0.kind == "pdf" }) { Toggle("Show source PDF",isOn:$showSource).toggleStyle(.checkbox) }
                 Spacer()
-                Button("Add note") { tune.melody.append(Note(pitch:tune.melody.last?.pitch ?? 60)) }
-                Button("Add rest") { tune.melody.append(Note(pitch:nil)) }
+                Button("Add note") { tune.melody.append(Note(pitch:tune.melody.last?.pitch ?? 60, ticks:tune.quarter)) }
+                Button("Add rest") { tune.melody.append(Note(pitch:nil, ticks:tune.quarter)) }
             }
             HStack(spacing:15) {
                 if showSource, let data = model.project.sources.first(where:{ $0.kind == "pdf" })?.data { SourcePDFView(data:data).frame(width:440) }
                 ScrollView {
                     LazyVStack(spacing:5) {
                         ForEach($tune.melody) { $note in
-                            MelodyNoteRow(note:$note,position:(tune.melody.firstIndex(where:{ $0.id == note.id }) ?? 0)+1,onPlay:{ if let pitch = note.pitch { model.player.audition(pitch) } },onDelete:{ tune.melody.removeAll { $0.id == note.id } })
+                            MelodyNoteRow(note:$note,quarter:tune.quarter,position:(tune.melody.firstIndex(where:{ $0.id == note.id }) ?? 0)+1,onPlay:{ if let pitch = note.pitch { model.player.audition(pitch) } },onDelete:{ tune.melody.removeAll { $0.id == note.id } })
                         }
                     }
                 }
             }.frame(maxHeight:.infinity)
             Text(model.score.origin).font(.caption).foregroundStyle(.secondary).lineLimit(3)
             HStack {
-                Text("Duration uses quarter-note beats. One verse is editable here; use Lyrics for multiple verses.").font(.caption2).foregroundStyle(.secondary)
+                Text("Duration menus use written note values, including existing tuplet ratios. One verse is editable here; use Lyrics for multiple verses.").font(.caption2).foregroundStyle(.secondary)
                 Spacer()
                 Button("Cancel") { model.player.stop(); model.sheet = nil }.keyboardShortcut(.cancelAction)
                 Button("I checked it — keep this melody") { model.confirmMelody(tune) }.buttonStyle(.borderedProminent).disabled(tune.melody.isEmpty)
@@ -166,6 +166,7 @@ struct MelodyEditor: View {
 
 struct MelodyNoteRow: View {
     @Binding var note: Note
+    var quarter: Int = 480
     var position: Int
     var onPlay: () -> Void
     var onDelete: () -> Void
@@ -175,7 +176,7 @@ struct MelodyNoteRow: View {
             Button(action:onPlay) { Image(systemName:"play.circle") }.buttonStyle(.borderless).disabled(note.pitch == nil).accessibilityLabel("Play note \(position)")
             Toggle("Rest",isOn:Binding(get:{ note.pitch == nil },set:{ note.pitch = $0 ? nil : 60; if $0 { note.lyrics = [] } })).toggleStyle(.checkbox).font(.caption)
             Stepper(value:Binding(get:{ note.pitch ?? 60 },set:{ note.pitch = $0 }),in:24...96) { Text(note.pitch.map(pitchName) ?? "—").font(.system(size:12,weight:.medium,design:.monospaced)).frame(width:46) }.frame(width:100).disabled(note.pitch == nil)
-            Stepper(value:$note.ticks,in:120...7680,step:120) { Text("\(Double(note.ticks)/480,specifier:"%.2g") beats").font(.caption).frame(width:62) }.frame(width:117)
+            NoteDurationControl(note: $note, quarter: quarter)
             TextField("Syllable",text:Binding(get:{ note.lyrics.first(where:{ $0.verse == 1 })?.text ?? "" },set:{ value in
                 let type = note.lyrics.first(where:{ $0.verse == 1 })?.syllabic ?? .single
                 note.lyrics.removeAll { $0.verse == 1 }; if !value.isEmpty { note.lyrics.insert(Lyric(value,syllabic:type),at:0) }

@@ -59,7 +59,7 @@ public struct PromptRecord: Codable, Equatable, Identifiable, Sendable {
     public init(request: String, model: String?, sourceRevisionID: UUID?, id: UUID = UUID()) {
         self.id = id; createdAt = Date(); self.request = request; self.model = model
         self.sourceRevisionID = sourceRevisionID; outcome = .running; message = ""
-        promptTemplate = "hymn_edit_plan_v2"
+        promptTemplate = "hymn_edit_plan_v3"
     }
 }
 public struct PromptLogExport: Codable, Sendable {

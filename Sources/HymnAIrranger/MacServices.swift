@@ -50,7 +50,7 @@ public enum KeyStore {
                 let p = try AVAudioPlayer(data:audio.wav()); p.prepareToPlay()
                 p.numberOfLoops = loop ? -1 : 0
                 self.player = p; self.start = startTick; self.finish = endTick ?? score.tune.totalTicks
-                self.countIn = audio.countInSeconds; self.ticksPerSecond = Double(score.tune.tempo)*speed/60*480
+                self.countIn = audio.countInSeconds; self.ticksPerSecond = Double(score.tune.tempo)*speed/60*Double(score.tune.quarter)
                 self.tick = Double(startTick); self.isPreparing = false; self.isPlaying = p.play()
                 self.timer = Timer.scheduledTimer(withTimeInterval:0.04,repeats:true) { [weak self] _ in
                     Task { @MainActor in

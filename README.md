@@ -1,3 +1,16 @@
+## Alpha 7: tuplets and finer rhythms
+
+PDF and MusicXML import now support single-level 2:3, 3:2, 4:3, 5:4, 6:4,
+7:4 and 9:8 tuplets, including rests and tied portions, plus thirty-second and
+sixty-fourth notes, dotted sixteenths and double-dotted values. Exact timing and
+written tuplet groups are shared by notation and practice playback. Nested and
+cross-bar tuplet groups remain unsupported; ordinary cross-bar ties work.
+
+New advanced-rhythm projects require alpha 7 (format 4); older projects still open
+with their original timing and history. Re-import a PDF that was rejected for its
+rhythm. See **Docs/Alpha 7 fixes.md** for details and the offline original example
+**Examples/Tuplets and finer notes.musicxml**. PDF recognition still requires review.
+
 # Hymn AIrranger
 ## A choir-first macOS arranger · v0.1 development alpha
 

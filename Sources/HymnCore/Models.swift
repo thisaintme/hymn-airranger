@@ -65,6 +65,7 @@ public struct Note: Codable, Equatable, Identifiable, Sendable {
     public var ticks: Int
     public var lyrics: [Lyric]
     // Supporting-voice segments retain the verified melody event they belong to.
+    public var rhythm: [WrittenRhythm]?
     public var sourceID: String?
     public var anchorID: String { sourceID ?? id }
     public init(pitch: Int?, ticks: Int = 480, lyrics: [Lyric] = [], id: String = "n" + UUID().uuidString.replacingOccurrences(of: "-", with: "")) {
@@ -77,6 +78,8 @@ public struct Tune: Codable, Equatable, Sendable {
     public var rightsNote = "Rights not yet checked"
     public var sourceURL = ""
     public var lyricText = ""
+    public var tickResolution: Int?
+    public var quarter: Int { tickResolution ?? 480 }
     public var beats = 4
     public var beatUnit = 4
     public var pickupTicks = 0
@@ -85,7 +88,7 @@ public struct Tune: Codable, Equatable, Sendable {
     public var tempo = 80
     public var melody: [Note] = []
     public init() {}
-    public var barTicks: Int { beats * 480 * 4 / max(beatUnit, 1) }
+    public var barTicks: Int { beats * quarter * 4 / max(beatUnit, 1) }
     public var totalTicks: Int { melody.reduce(0) { $0 + $1.ticks } }
     public var tonic: Int { ((fifths * 7 + (minor ? 9 : 0)) % 12 + 12) % 12 }
     public var measureCount: Int {
@@ -102,20 +105,22 @@ public struct Tune: Codable, Equatable, Sendable {
     }
     public func validated() throws {
         guard title.count <= 256, credit.count <= 512, rightsNote.count <= 4000, sourceURL.count <= 2048, lyricText.count <= 20000 else { throw HymnError.invalid("Some score metadata is unexpectedly long.") }
+        guard Rhythm.resolutions.contains(quarter) else { throw HymnError.invalid("Unsupported timing resolution.") }
         guard (1...12).contains(beats), [2,4,8,16].contains(beatUnit), (30...180).contains(tempo), (-6...6).contains(fifths) else {
             throw HymnError.invalid("Use a supported meter, a tempo from 30–180, and at most six sharps or flats.")
         }
-        guard pickupTicks >= 0, pickupTicks < barTicks, pickupTicks % 120 == 0 else { throw HymnError.invalid("The pickup must be shorter than a bar, in sixteenth-note steps.") }
+        guard pickupTicks >= 0, pickupTicks < barTicks, pickupTicks % Rhythm.quantum(quarter) == 0 else { throw HymnError.invalid("The pickup must be shorter than a bar and use supported rhythmic units.") }
         guard !melody.isEmpty, melody.count <= 512 else { throw HymnError.invalid("A tune must contain 1–512 notes or rests.") }
         guard Set(melody.map(\.id)).count == melody.count else { throw HymnError.invalid("The score contains duplicate note identifiers.") }
         for note in melody {
             guard note.id.count <= 80, note.id.range(of:"^[A-Za-z_][A-Za-z0-9_.-]*$",options:.regularExpression) != nil else { throw HymnError.invalid("Invalid note identifier.") }
             guard Set(note.lyrics.map(\.verse)).count == note.lyrics.count else { throw HymnError.invalid("Duplicate verse syllables on one note.") }
-            guard note.ticks > 0, note.ticks <= barTicks * 4, note.ticks % 120 == 0 else { throw HymnError.invalid("This alpha supports sixteenth-note grid rhythms, including dotted notes, but not tuplets.") }
+            guard note.ticks > 0, note.ticks <= barTicks * 4 else { throw HymnError.invalid("Invalid or excessive note duration.") }
             guard note.pitch == nil || (0...127).contains(note.pitch!) else { throw HymnError.invalid("A pitch is outside the MIDI range.") }
             guard note.lyrics.allSatisfy({ (1...8).contains($0.verse) && $0.text.count <= 100 }) else { throw HymnError.invalid("Check verse numbers and long syllables.") }
         }
-        guard totalTicks <= 480 * 600 else { throw HymnError.invalid("This alpha is limited to 600 quarter-note beats per tune.") }
+        try Rhythm.validateLine(melody, quarter: quarter, tune: self)
+        guard totalTicks <= quarter * 600 else { throw HymnError.invalid("This alpha is limited to 600 quarter-note beats per tune.") }
     }
     public func transposed(by semitones: Int) throws -> Tune {
         var copy = self
@@ -152,6 +157,7 @@ public struct Score: Codable, Equatable, Sendable {
     public init(tune: Tune, profile: ChoirProfile = .init(), parts: [Part] = [], melodyConfirmed: Bool = false, origin: String = "Imported melody") {
         self.tune = tune; self.profile = profile; self.parts = parts; self.melodyConfirmed = melodyConfirmed; self.origin = origin
     }
+    public var requiresVersion4: Bool { tune.quarter != 480 || tune.pickupTicks % 120 != 0 || ([tune.melody] + parts.map(\.notes)).joined().contains { $0.rhythm != nil || $0.ticks % 120 != 0 } }
     public var requiresVersion2: Bool { parts.contains { !($0.dynamics ?? []).isEmpty || $0.notes.contains { $0.sourceID != nil } } }
     public var effectiveParts: [Part] { parts.isEmpty ? [Part(voice: .soprano, notes: tune.melody)] : parts }
 }
@@ -182,14 +188,16 @@ public struct Project: Codable, Equatable, Sendable {
     public init(score: Score) {
         let first = Revision(score: score, label: "Starting point")
         revisions = [first]; currentID = first.id
-        if score.isImportedArrangement { schemaVersion = 3 }
+        if score.requiresVersion4 { schemaVersion = 4 }
+        else if score.isImportedArrangement { schemaVersion = max(schemaVersion, 3) }
         else if score.requiresVersion2 { schemaVersion = max(schemaVersion, 2) }
     }
     public var current: Revision { revisions.first { $0.id == currentID }! }
     public mutating func commit(_ score: Score, label: String, request: String = "") {
         let revision = Revision(score: score, parentID: currentID, label: label, request: request)
         revisions.append(revision); currentID = revision.id
-        if score.isImportedArrangement { schemaVersion = 3 }
+        if score.requiresVersion4 { schemaVersion = 4 }
+        else if score.isImportedArrangement { schemaVersion = max(schemaVersion, 3) }
         else if score.requiresVersion2 { schemaVersion = max(schemaVersion, 2) }
     }
     public mutating func checkout(_ id: UUID) throws {
@@ -198,10 +206,11 @@ public struct Project: Codable, Equatable, Sendable {
     }
     public func validated() throws {
         guard sources.reduce(0, { $0 + $1.data.count }) <= 25_000_000 else { throw HymnError.invalid("Source attachments exceed 25 MB.") }
-        guard [1, 2, 3].contains(schemaVersion) else { throw HymnError.invalid("This project uses a newer or unsupported file format.") }
+        guard [1, 2, 3, 4].contains(schemaVersion) else { throw HymnError.invalid("This project uses a newer or unsupported file format.") }
         guard !revisions.isEmpty, revisions.count <= 2000, Set(revisions.map(\.id)).count == revisions.count,
               revisions.contains(where: { $0.id == currentID }),
               approvedID == nil || revisions.contains(where: { $0.id == approvedID }) else { throw HymnError.invalid("The project's version history is damaged.") }
+        guard schemaVersion >= 4 || !revisions.contains(where: { $0.score.requiresVersion4 }) else { throw HymnError.invalid("Tuplets and fine rhythms require project format 4 (alpha 7 or later).") }
         guard schemaVersion >= 3 || !revisions.contains(where: { $0.score.isImportedArrangement }) else { throw HymnError.invalid("Imported arrangements require project format 3.") }
         guard schemaVersion >= 2 || !revisions.contains(where: { $0.score.requiresVersion2 }) else { throw HymnError.invalid("Independent rhythms require project format 2.") }
         var seen = Set<UUID>()

@@ -19,7 +19,7 @@ public enum RequestSafety {
         try plan.validateOperations(for: score)
         guard plan.action.changesScore else { return }
         let text = request.lowercased()
-        let rhythm = ["rhythm", "syncop", "synkop", "syncopation", "offbeat", "syncope"].contains { text.contains($0) }
+        let rhythm = ["rhythm", "syncop", "synkop", "syncopation", "offbeat", "syncope", "triplet", "tuplet", "triole", "quintuplet", "septuplet"].contains { text.contains($0) }
         let dynamics = ["dynamics", "dynamik", "loudness", "louder", "softer", "lauter", "leiser", "crescendo", "diminuendo"].contains { text.contains($0) }
         if rhythm && dynamics { throw HymnError.invalid("Please request rhythm and loudness changes separately. Nothing was applied.") }
         if rhythm && plan.action != .rhythm { throw HymnError.invalid("You asked for rhythm, but the AI returned another kind of edit. Nothing was applied; ask for rhythm and harmony separately.") }

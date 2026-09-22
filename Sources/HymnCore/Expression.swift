@@ -5,7 +5,7 @@ public enum PlanAction: String, Codable, Sendable {
     public var changesScore: Bool { [.harmonize, .rhythm, .dynamics].contains(self) }
 }
 public enum RhythmPattern: String, Codable, Sendable {
-    case offbeat, repeatEighth, straight
+    case offbeat, repeatEighth, triplet, straight
 }
 public struct RhythmEdit: Codable, Equatable, Sendable {
     public var voice: Voice
@@ -71,12 +71,13 @@ public enum PartTiming {
     public static func groups(_ part: Part, tune: Tune) throws -> [[Note]] {
         guard part.notes.count <= 4096, !part.notes.isEmpty,
               Set(part.notes.map(\.id)).count == part.notes.count else { throw HymnError.invalid("Invalid or duplicate \(part.voice.name) note events.") }
+        try Rhythm.validateLine(part.notes, quarter: tune.quarter, tune: tune)
         var groups: [[Note]] = [], cursor = 0
         for source in tune.melody {
             var group: [Note] = [], total = 0
             while cursor < part.notes.count && part.notes[cursor].anchorID == source.id {
                 let note = part.notes[cursor]
-                guard note.ticks > 0, note.ticks <= source.ticks, note.ticks % 120 == 0,
+                guard note.ticks > 0, note.ticks <= source.ticks,
                       note.id.count <= 100, note.id.range(of: "^[A-Za-z_][A-Za-z0-9_.-]*$", options: .regularExpression) != nil,
                       note.pitch == nil || (0...127).contains(note.pitch!) else { throw HymnError.invalid("Invalid pitch, duration or identifier in \(part.voice.name).") }
                 total += note.ticks; group.append(note); cursor += 1
@@ -154,18 +155,32 @@ public enum ExpressiveEditor {
             let durations: [(Int, Bool)]
             switch edit.pattern {
             case .offbeat:
-                guard original.ticks >= 960, (starts[i] < tune.pickupTicks ? starts[i] : starts[i] - tune.pickupTicks) % 480 == 0 else { throw HymnError.invalid("Offbeat entries need a beat-aligned note of at least two quarter-note beats. Choose a longer note.") }
-                durations = [(240, false), (original.ticks - 240, true)]
+                guard original.ticks >= tune.quarter * 2, (starts[i] < tune.pickupTicks ? starts[i] : starts[i] - tune.pickupTicks) % tune.quarter == 0 else { throw HymnError.invalid("Offbeat entries need a beat-aligned note of at least two quarter-note beats. Choose a longer note.") }
+                durations = [(tune.quarter / 2, false), (original.ticks - tune.quarter / 2, true)]
             case .repeatEighth:
-                guard original.ticks >= 480 else { throw HymnError.invalid("Repeated entries need at least a quarter note.") }
-                durations = [(240, true), (original.ticks - 240, true)]
+                guard original.ticks >= tune.quarter else { throw HymnError.invalid("Repeated entries need at least a quarter note.") }
+                durations = [(tune.quarter / 2, true), (original.ticks - tune.quarter / 2, true)]
+            case .triplet:
+                guard original.rhythm == nil, [tune.quarter, tune.quarter * 2].contains(original.ticks),
+                      (starts[i] < tune.pickupTicks ? starts[i] : starts[i] - tune.pickupTicks) % tune.quarter == 0,
+                      tune.measure(at: starts[i]) == tune.measure(at: starts[i] + original.ticks - 1) else {
+                    throw HymnError.invalid("Triplet repeats need a beat-aligned quarter or half note within one bar.")
+                }
+                durations = Array(repeating: (original.ticks / 3, true), count: 3)
             case .straight:
                 durations = [(original.ticks, true)]
+            }
+            if edit.pattern != .straight && edit.pattern != .triplet && original.rhythm != nil {
+                throw HymnError.invalid("Offbeat and eighth-repeat edits cannot replace an existing tuplet slot. Its original rhythm is preserved.")
             }
             var syllablePlaced = false
             groups[i] = durations.enumerated().map { j, segment in
                 var n = Note(pitch: segment.1 ? pitch : nil, ticks: segment.0,
                              id: edit.pattern == .straight ? original.id : "r\(edit.voice.short)_\(i)_\(edit.pattern.rawValue)_\(j)")
+                if edit.pattern == .straight { n.rhythm = original.rhythm }
+                if edit.pattern == .triplet {
+                    n.rhythm = [WrittenRhythm(original.ticks == tune.quarter ? 8 : 4, actual: 3, normal: 2, group: "triplet_\(edit.voice.short)_\(i)")]
+                }
                 n.sourceID = edit.pattern == .straight ? nil : original.id
                 if segment.1 && !syllablePlaced { n.lyrics = original.lyrics; syllablePlaced = true }
                 return n
