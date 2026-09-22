@@ -6,7 +6,7 @@ import HymnCore
 
 struct SheetHeader: View {
     var title: String; var subtitle: String
-    var body: some View { VStack(alignment:.leading,spacing:8) { Text(title).font(.system(size:27,weight:.semibold,design:.serif)); Text(subtitle).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal:false,vertical:true) }.frame(maxWidth:.infinity,alignment:.leading) }
+    var body: some View { VStack(alignment:.leading,spacing:8) { Text(title).font(.system(size:27,weight:.semibold,design:.serif)).textSelection(.enabled); Text(subtitle).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal:false,vertical:true) }.frame(maxWidth:.infinity,alignment:.leading) }
 }
 
 struct ImportView: View {
@@ -34,9 +34,12 @@ struct ImportView: View {
                 default: xmlPane
                 }
             }.frame(maxWidth:.infinity,maxHeight:.infinity,alignment:.topLeading)
+            if !model.errorMessage.isEmpty {
+                OperationErrorNotice(message: model.errorMessage) { model.errorMessage = "" }
+            }
             Divider()
             HStack {
-                if model.busy { ProgressView().controlSize(.small); Text(model.status).font(.callout); Button("Cancel operation") { model.cancelOperation() } }
+                if model.busy { ProgressView().controlSize(.small); Text(model.status).font(.callout).textSelection(.enabled); Button("Cancel operation") { model.cancelOperation() } }
                 Spacer()
                 Button("Close") { recorder.stop(); model.sheet = nil }.keyboardShortcut(.cancelAction).disabled(model.busy)
             }

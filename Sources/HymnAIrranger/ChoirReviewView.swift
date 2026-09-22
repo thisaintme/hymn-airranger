@@ -20,6 +20,9 @@ struct ChoirReviewView: View {
         VStack(alignment: .leading, spacing: 12) {
             SheetHeader(title: "Check the existing arrangement", subtitle: "Match the printed voices, listen to each line and correct recognition errors. No new harmony is generated. Nothing replaces your current project until you finish.")
             metadata
+            if !model.errorMessage.isEmpty {
+                OperationErrorNotice(message: model.errorMessage) { model.errorMessage = "" }
+            }
             DisclosureGroup("1. Match the source lines to your singers", isExpanded: $mappingExpanded) {
                 ScrollView {
                     VStack(spacing: 7) {
@@ -60,12 +63,14 @@ struct ChoirReviewView: View {
                 Toggle("I reviewed the source and the recognition notes", isOn: $acknowledged).toggleStyle(.checkbox).font(.caption)
                 Spacer()
                 Text("\(checked.intersection(selectedIDs).count)/\(selectedIDs.count) voices checked").font(.caption).foregroundStyle(.secondary)
-                Button("Cancel") { model.cancelChoirReview() }.keyboardShortcut(.cancelAction)
+                Button("Discard") { model.cancelChoirReview() }
+                Button("Review later") { model.pauseChoirReview(draft) }.keyboardShortcut(.cancelAction)
                 Button("Finish review & rehearse") {
                     if !model.finishChoirReview(draft, checkedTracks: checked, acknowledgedWarnings: acknowledged) {
                         validationError = model.errorMessage
                     }
                 }.buttonStyle(.borderedProminent).disabled(preview == nil || !acknowledged || !selectedIDs.isSubset(of: checked))
+                .accessibilityIdentifier("choir-review-finish")
             }
         }.padding(24).frame(width: 1080, height: 760)
         .onAppear { validate() }
@@ -103,7 +108,14 @@ struct ChoirReviewView: View {
     private var originalPDF: Data? { model.choirImportContext?.sources.first { $0.kind == "pdf" }?.data }
     private var selectedTrack: ChoirImportTrack? { draft.tracks.first { $0.id == selectedID } }
     private var selectedIDs: Set<String> { Set(draft.tracks.filter(\.included).map(\.id)) }
-    private func invalidate() { checked.removeAll(); acknowledged = false; model.player.stop(); validate() }
+    private func invalidate() {
+        checked.removeAll(); acknowledged = false; model.player.stop(); validate()
+        // Preserve local corrections when the sheet is paused or dismissed. Reopening
+        // deliberately resets check marks so every revised line is reviewed again.
+        if model.sheet == .reviewArrangement, model.pendingChoirImport != nil {
+            model.pendingChoirImport = draft
+        }
+    }
     private func validate() {
         do { preview = try draft.score(profile: model.score.profile); validationError = "" }
         catch { preview = nil; validationError = error.localizedDescription }

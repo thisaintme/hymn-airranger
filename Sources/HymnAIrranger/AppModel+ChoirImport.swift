@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 import HymnCore
 
 struct ChoirImportContext {
+    var id = UUID() // Stable identity for one review, including pauses and corrections.
     var projectID: UUID
     var revisionID: UUID
     var isCorrection: Bool
@@ -16,7 +17,7 @@ extension AppModel {
         score.isImportedArrangement ? project.sources.first { $0.kind == "pdf" } : nil
     }
     func requestChoirPDFImport(_ data: Data, filename: String) {
-        guard !busy else { return }
+        guard !busy, !redirectToPendingChoirReview() else { return }
         guard cloudEnabled else { errorMessage = "Enable cloud AI in Settings first. No PDF has been uploaded."; return }
         let alert = NSAlert()
         alert.messageText = "Transcribe this existing choir arrangement?"
@@ -27,7 +28,7 @@ extension AppModel {
     }
     /// Called only after the upload confirmation (or with fake services in tests).
     func startChoirPDFImport(_ data: Data, filename: String) {
-        guard !busy else { return }
+        guard !busy, !redirectToPendingChoirReview() else { return }
         guard cloudEnabled, data.count <= 10_000_000, let pdf = PDFDocument(data: data),
               !pdf.isLocked, (1...5).contains(pdf.pageCount) else {
             errorMessage = "Enable cloud AI and choose one unlocked song PDF of at most five pages and 10 MB. Nothing was sent."; return
@@ -39,7 +40,7 @@ extension AppModel {
         }
     }
     func importChoirMusicXML(_ url: URL) {
-        guard !busy else { return }
+        guard !busy, !redirectToPendingChoirReview() else { return }
         do {
             guard (try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0) <= 5_000_000 else { throw HymnError.invalid("Use uncompressed MusicXML of at most 5 MB.") }
             let data = try Data(contentsOf: url)
@@ -50,7 +51,9 @@ extension AppModel {
         } catch { errorMessage = error.localizedDescription }
     }
     func beginChoirImport(source: SourceAttachment, loader: @escaping @Sendable () async throws -> ChoirImportDraft) {
-        guard !busy else { return }
+        guard !busy, !redirectToPendingChoirReview() else { return }
+        errorMessage = ""
+        sheet = .importSong
         let token = UUID(), sourceProjectID = project.id, sourceRevisionID = project.currentID
         choirImportToken = token; pendingChoirImport = nil; choirImportContext = nil
         player.stop(); busy = true; setArrangementProgress(.readingChoir)
@@ -61,12 +64,13 @@ extension AppModel {
                 }
             }
             do {
+                try Task.checkCancellation()
                 let draft = try await loader()
                 try Task.checkCancellation()
                 guard choirImportToken == token else { return }
                 guard project.id == sourceProjectID, project.currentID == sourceRevisionID else { throw HymnError.invalid("The current project changed during import. The transcription was not installed.") }
-                pendingChoirImport = draft
                 choirImportContext = .init(projectID: sourceProjectID, revisionID: sourceRevisionID, isCorrection: false, sources: [source])
+                pendingChoirImport = draft
                 status = "Transcription ready — identify and check every voice before rehearsal"
                 sheet = .reviewArrangement
             } catch {
@@ -78,15 +82,39 @@ extension AppModel {
         }
     }
     func reviewImportedArrangement() {
-        guard !busy, score.isImportedArrangement else { return }
+        guard !busy, score.isImportedArrangement, !redirectToPendingChoirReview() else { return }
+        errorMessage = ""
         do {
             pendingChoirImport = try ChoirImportDraft.reviewing(score)
             choirImportContext = .init(projectID: project.id, revisionID: project.currentID, isCorrection: true, sources: project.sources)
             player.stop(); sheet = .reviewArrangement
         } catch { errorMessage = error.localizedDescription }
     }
+    /// A completed transcription is not a library song until the user finishes review.
+    /// Keep it recoverable in this session instead of issuing another paid request.
+    @discardableResult func redirectToPendingChoirReview() -> Bool {
+        guard pendingChoirImport != nil else { return false }
+        resumePendingChoirReview()
+        return true
+    }
+    func resumePendingChoirReview() {
+        guard !busy, pendingChoirImport != nil, let context = choirImportContext else { return }
+        guard context.projectID == project.id, context.revisionID == project.currentID else {
+            errorMessage = "This review belongs to the previously selected song/version. Return to that version, or discard the pending transcription before importing another song. Nothing was uploaded."
+            return
+        }
+        errorMessage = ""
+        player.stop(); sheet = .reviewArrangement
+        status = "Transcription ready — finish review to add the song to your library"
+    }
+    func pauseChoirReview(_ draft: ChoirImportDraft) {
+        guard !busy, pendingChoirImport != nil, choirImportContext != nil else { return }
+        pendingChoirImport = draft
+        player.stop(); sheet = nil
+        status = "Review paused — choose Continue review; no new AI request is needed"
+    }
     func cancelChoirReview() {
-        player.stop(); pendingChoirImport = nil; choirImportContext = nil; sheet = nil
+        player.stop(); pendingChoirImport = nil; choirImportContext = nil; sheet = nil; errorMessage = ""
         status = "Review closed; current project unchanged"
     }
     @discardableResult func finishChoirReview(_ draft: ChoirImportDraft, checkedTracks: Set<String>, acknowledgedWarnings: Bool) -> Bool {
@@ -109,7 +137,7 @@ extension AppModel {
             try next.data().write(to: folder.appendingPathComponent(next.id.uuidString + ".hymn"), options: .atomic)
             player.stop(); project = next; defaults.set(next.id.uuidString, forKey: "lastProject")
             reloadPromptHistory(); resetSelection(); refreshLibrary()
-            pendingChoirImport = nil; choirImportContext = nil; sheet = nil
+            pendingChoirImport = nil; choirImportContext = nil; sheet = nil; errorMessage = ""
             showOriginalPDF = false; workspace = .practice; refreshScore()
             status = "Ready to rehearse the imported voices — no rearrangement was made"
             return true

@@ -13,18 +13,7 @@ struct HymnAIrrangerApp: App {
             WorkspaceView(model:model)
                 .tint(Color(red:0.13,green:0.39,blue:0.34))
                 .frame(minWidth:1120,minHeight:740)
-                .alert("Something needs attention",isPresented:Binding(get:{ !model.errorMessage.isEmpty },set:{ if !$0 { model.errorMessage = "" } })) { Button("OK",role:.cancel) {} } message: { Text(model.errorMessage) }
-                .sheet(item:$model.sheet) { sheet in
-                    switch sheet {
-                    case .importSong: ImportView(model:model)
-                    case .melody: MelodyEditor(model:model)
-                    case .lyrics: LyricsEditor(model:model)
-                    case .choir: ChoirEditor(model:model)
-                    case .source: SourceView(model:model)
-                    case .reviewArrangement:
-                        if let draft = model.pendingChoirImport { ChoirReviewView(model: model, draft: draft) }
-                    }
-                }
+                .modifier(AppPresentation(model: model))
         }
         .defaultSize(width:1440,height:920)
         .commands {
