@@ -1,0 +1,7 @@
+.build/
+.swiftpm/
+Build/
+.DS_Store
+Sources/HymnAIrranger/Resources/Web/Vendor/
+*.partial
+.env
