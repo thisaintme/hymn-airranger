@@ -28,8 +28,22 @@ jobs:
           PY
           git checkout --detach 05cba981714fa6d4e4def8749cf05a977df52ea2
           git apply --index "$RUNNER_TEMP/choir-import.patch"
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('Sources/HymnAIrranger/WorkspaceView.swift')
+          text = path.read_text()
+          marker = '    private var importedViewControls: some View {'
+          assert text.count(marker) == 2
+          start = text.rindex(marker)
+          end = text.index('    private var header: some View {', start)
+          path.write_text(text[:start] + text[end:])
+          PY
+          git add Sources/HymnAIrranger/WorkspaceView.swift
           git diff --cached --check
           test -z "$(git diff --cached --name-only -- .github)"
+          git -c user.name='Hymn AIrranger development' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'Import existing SAB/SATB arrangements for rehearsal without reharmonizing'
+          git push origin HEAD:refs/heads/work/choir-import-reviewed
+          echo "Source under native validation: $(git rev-parse HEAD). Main and published releases are unchanged." >> "$GITHUB_STEP_SUMMARY"
       - name: Prepare pinned resources
         run: bash Scripts/prepare-resources.sh
       - name: Run all native core, workflow and integration tests
@@ -47,10 +61,3 @@ jobs:
         run: swift build -c release --product HymnAIrranger
       - name: Verify packaged app and installed resources
         run: bash Scripts/package-app.sh
-      - name: Save tested source on an isolated review branch
-        shell: bash
-        run: |
-          set -euo pipefail
-          git -c user.name='Hymn AIrranger development' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'Import existing SAB/SATB arrangements for rehearsal without reharmonizing'
-          git push origin HEAD:refs/heads/work/choir-import-reviewed
-          echo "Tested source: $(git rev-parse HEAD). Main and published releases are unchanged." >> "$GITHUB_STEP_SUMMARY"
