@@ -243,24 +243,77 @@ struct InspectorView: View {
             Text("Restoring a version preserves later versions. Your next change starts a new branch.").font(.caption).foregroundStyle(.secondary)
             ScrollView {
                 VStack(spacing:10) {
-                    ForEach(Array(model.project.revisions.reversed())) { revision in
-                        Button { model.restore(revision.id) } label: {
-                            VStack(alignment:.leading,spacing:7) {
-                                HStack {
-                                    Image(systemName:revision.id == model.project.approvedID ? "checkmark.seal.fill" : "clock.arrow.circlepath")
-                                    Text(revision.createdAt,style:.time).font(.caption)
-                                    Spacer()
-                                    if revision.id == model.project.currentID { Text("CURRENT").font(.system(size:9,weight:.semibold)) }
-                                }.foregroundStyle(.tint)
-                                Text(revision.label).font(.callout.weight(.medium)).lineLimit(4)
-                                Text(String(revision.id.uuidString.prefix(8)) + (revision.parentID.map { " ← "+String($0.uuidString.prefix(8)) } ?? " · starting point")).font(.system(size:10,design:.monospaced)).foregroundStyle(.secondary)
-                            }.frame(maxWidth:.infinity,alignment:.leading).padding(12).background(revision.id == model.project.currentID ? Color.accentColor.opacity(0.08) : Color.primary.opacity(0.03),in:RoundedRectangle(cornerRadius:9))
-                        }.buttonStyle(.plain).disabled(model.busy)
+                    ForEach(newestRevisions) { revision in
+                        RevisionHistoryRow(
+                            revision: revision,
+                            isCurrent: revision.id == model.project.currentID,
+                            isApproved: revision.id == model.project.approvedID,
+                            restore: { model.restore(revision.id) }
+                        )
+                        .disabled(model.busy)
                     }
                 }
             }
             Button("Save a portable project copy…") { model.saveCopy() }
         }
+    }
+
+    private var newestRevisions: [Revision] {
+        Array(model.project.revisions.reversed())
+    }
+}
+
+// Keep each row and its string formatting outside the version-list builder.
+// A single deeply nested SwiftUI expression can exhaust the macOS type checker.
+private struct RevisionHistoryRow: View {
+    let revision: Revision
+    let isCurrent: Bool
+    let isApproved: Bool
+    let restore: () -> Void
+
+    var body: some View {
+        Button(action: restore) {
+            VStack(alignment: .leading, spacing: 7) {
+                header
+                Text(revision.label)
+                    .font(.callout.weight(.medium))
+                    .lineLimit(4)
+                Text(ancestryText)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(12)
+            .background(backgroundColor, in: RoundedRectangle(cornerRadius: 9))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var header: some View {
+        HStack {
+            Image(systemName: isApproved ? "checkmark.seal.fill" : "clock.arrow.circlepath")
+            Text(revision.createdAt, style: .time)
+                .font(.caption)
+            Spacer()
+            if isCurrent {
+                Text("CURRENT")
+                    .font(.system(size: 9, weight: .semibold))
+            }
+        }
+        .foregroundStyle(.tint)
+    }
+
+    private var ancestryText: String {
+        let revisionID = String(revision.id.uuidString.prefix(8))
+        guard let parentID = revision.parentID else {
+            return "\(revisionID) · starting point"
+        }
+        let parent = String(parentID.uuidString.prefix(8))
+        return "\(revisionID) ← \(parent)"
+    }
+
+    private var backgroundColor: Color {
+        isCurrent ? Color.accentColor.opacity(0.08) : Color.primary.opacity(0.03)
     }
 }
 
