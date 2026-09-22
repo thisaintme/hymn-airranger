@@ -70,7 +70,13 @@ public enum KeyStore {
 
 public enum MP3Encoder {
     public static func encode(_ audio: RenderedAudio) throws -> Data {
-        guard let url = AppResources.bundle?.url(forResource:"lame.all",withExtension:"js",subdirectory:"Web/Vendor"),
+        try encode(audio, resourceBundle: AppResources.bundle)
+    }
+
+    // The XCTest host is not the installed app. Let integration tests supply the
+    // same packaged scripts without changing production resource lookup rules.
+    static func encode(_ audio: RenderedAudio, resourceBundle: Bundle?) throws -> Data {
+        guard let url = resourceBundle?.url(forResource:"lame.all",withExtension:"js",subdirectory:"Web/Vendor"),
               let context = JSContext() else { throw HymnError.invalid("The MP3 encoder is missing. Download a fresh copy of the app, or rebuild it from source.") }
         var problem: String?
         context.exceptionHandler = { _,value in problem = value?.toString() ?? "JavaScript error" }

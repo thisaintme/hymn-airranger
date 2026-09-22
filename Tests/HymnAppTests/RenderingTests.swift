@@ -22,6 +22,13 @@ final class RenderingTests: XCTestCase {
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         return folder
     }
+    private func resources() throws -> Bundle {
+        let host = Bundle(for: RenderingTests.self)
+        // swift test launches an Xcode host, while the app resources are beside
+        // our .xctest bundle in SwiftPM's output directory.
+        return try XCTUnwrap(AppResources.resolve(in: host),
+                             "Missing test resources beside \(host.bundleURL.path)")
+    }
     @MainActor func testIndependentRhythmsEngraveWithWebKitAndExportA4PDF() async throws {
         _ = NSApplication.shared
         let controller = ScoreController(), configuration = WKWebViewConfiguration()
@@ -29,7 +36,7 @@ final class RenderingTests: XCTestCase {
         let web = WKWebView(frame: CGRect(x: 0, y: 0, width: 840, height: 1180), configuration: configuration)
         defer { web.stopLoading(); web.navigationDelegate = nil; configuration.userContentController.removeScriptMessageHandler(forName: "hymn") }
         web.navigationDelegate = controller; controller.attach(web)
-        let url = try XCTUnwrap(AppResources.bundle?.url(forResource: "index", withExtension: "html", subdirectory: "Web"))
+        let url = try XCTUnwrap(try resources().url(forResource: "index", withExtension: "html", subdirectory: "Web"))
         web.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
         let score = try score()
         controller.render(score, stamp: "INTEGRATION TEST — original development study")
@@ -58,7 +65,7 @@ final class RenderingTests: XCTestCase {
     func testIndependentRhythmMP3EncodesAndDecodesOnMac() throws {
         let score = try score()
         let audio = try Synthesizer.render(score, mix: .emphasize(.tenor), countIn: false)
-        let encoded = try MP3Encoder.encode(audio)
+        let encoded = try MP3Encoder.encode(audio, resourceBundle: try resources())
         let url = try evidenceFolder().appendingPathComponent("Independent-rhythm.mp3")
         try encoded.write(to: url)
         let file = try AVAudioFile(forReading: url)
