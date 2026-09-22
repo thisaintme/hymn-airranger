@@ -250,4 +250,70 @@ final class ImportPresentationTests: XCTestCase {
         XCTAssertEqual(model.project, original); XCTAssertEqual(model.sheet, .reviewArrangement)
         XCTAssertEqual(model.pendingChoirImport, draft); XCTAssertFalse(model.errorMessage.isEmpty)
     }
+    private func missingTupletReply() throws -> ChoirPDFExtraction {
+        let notes: [[String: Any]] = [
+            ["pitch":60,"ticks":160,"lyrics":[],"rhythm":[]],
+            ["pitch":NSNull(),"ticks":160,"lyrics":[],"rhythm":[]],
+            ["pitch":60,"ticks":160,"lyrics":[],"rhythm":[]],
+            ["pitch":60,"ticks":1440,"lyrics":[],"rhythm":[]]
+        ]
+        let parts: [[String: Any]] = ["soprano","alto","lower"].map { voice in
+            ["label":voice,"voice":voice,"notes":notes,"dynamics":[]]
+        }
+        let data = try JSONSerialization.data(withJSONObject: [
+            "status":"complete","title":"Missing tuplet diagnostic fixture","credit":"Synthetic test",
+            "beats":4,"beatUnit":4,"fifths":0,"minor":false,"tempo":80,"tickResolution":480,
+            "measureTicks":[1920],"parts":parts,"warnings":[],"unsupportedFeatures":[]
+        ])
+        return try JSONDecoder().decode(ChoirPDFExtraction.self, from: data)
+    }
+    @MainActor func testMissingTupletResponseShowsActionableReviewAndDiagnostic() async throws {
+        let (model, gate) = try fixture(), original = model.project
+        let window = host(model); defer { close(window, model: model) }
+        model.sheet = .importSong
+        let shown = try await waitFor { window.attachedSheet != nil }; XCTAssertTrue(shown)
+        model.startChoirPDFImport(try pdf(), filename: "Missing-tuplet-test.pdf")
+        await gate.send(.success(try missingTupletReply()))
+        await model.operation?.value
+        let review = try await waitFor { self.visibleText(window.attachedSheet).contains("Rhythm details need review") }
+        XCTAssertTrue(review, visibleText(window.attachedSheet))
+        XCTAssertFalse(model.busy); XCTAssertEqual(model.sheet, .reviewArrangement)
+        let draft = try XCTUnwrap(model.pendingChoirImport)
+        XCTAssertEqual(model.project, original); XCTAssertEqual(draft.rhythmIssues.count, 9)
+        XCTAssertTrue(visibleText(window.attachedSheet).contains("1/3"))
+        XCTAssertTrue(visibleText(window.attachedSheet).contains("Possible 3:2"))
+        let folder = URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent(".build/SmokeArtifacts")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try draft.transcriptionReport(appVersion: "native-test").write(to: folder.appendingPathComponent("Missing-tuplet-transcription-report.json"))
+        if let sheet = window.attachedSheet { try saveEvidence(sheet, name: "Missing-tuplet-review") }
+        let included = Set(draft.tracks.map(\.id))
+        XCTAssertFalse(model.finishChoirReview(draft, checkedTracks: included, acknowledgedWarnings: true))
+        XCTAssertEqual(model.project, original); XCTAssertNotNil(model.pendingChoirImport)
+    }
+    @MainActor func testMissingTupletCorrectionResumesWithoutNetworkAndSavesExactly() async throws {
+        let (model, gate) = try fixture()
+        let response = try missingTupletReply()
+        model.startChoirPDFImport(try pdf(), filename: "Missing-tuplet-test.pdf")
+        await gate.send(.success(response)); await model.operation?.value
+        var draft = try XCTUnwrap(model.pendingChoirImport)
+        let originalTracks = draft.tracks
+        for index in draft.tracks.indices {
+            let suggestion = try XCTUnwrap(TranscriptionRhythmReview.suggestions(track: draft.tracks[index], tune: draft.tune).first)
+            draft.tracks[index] = try TranscriptionRhythmReview.applying(suggestion, track: draft.tracks[index], tune: draft.tune)
+        }
+        model.pauseChoirReview(draft); model.resumePendingChoirReview()
+        XCTAssertEqual(model.pendingChoirImport, draft)
+        XCTAssertEqual(draft.originalRecognition, response)
+        let calls = await gate.calls; XCTAssertEqual(calls, 1)
+        XCTAssertTrue(model.finishChoirReview(draft, checkedTracks: Set(draft.tracks.map(\.id)), acknowledgedWarnings: true))
+        XCTAssertEqual(model.workspace, .practice)
+        for (index, part) in model.score.parts.enumerated() {
+            XCTAssertEqual(part.notes.map(\.ticks), originalTracks[index].notes.map(\.ticks))
+            XCTAssertEqual(part.notes.map(\.pitch), originalTracks[index].notes.map(\.pitch))
+            XCTAssertEqual(part.notes.map(\.lyrics), originalTracks[index].notes.map(\.lyrics))
+        }
+        XCTAssertEqual(try Project.load(model.project.data()), model.project)
+        XCTAssertNil(model.pendingChoirImport)
+    }
+
 }

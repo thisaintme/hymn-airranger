@@ -23,6 +23,15 @@ struct ChoirReviewView: View {
             if !model.errorMessage.isEmpty {
                 OperationErrorNotice(message: model.errorMessage) { model.errorMessage = "" }
             }
+            if !draft.rhythmIssues.isEmpty {
+                HStack {
+                    Text("Rhythm details need review: \(draft.rhythmIssues.count) issue(s). Select the affected voice below. Playback and saving stay locked until the notation is consistent.")
+                        .font(.caption).foregroundStyle(.orange).textSelection(.enabled)
+                    Button("Go to first issue") {
+                        if let issue = draft.rhythmIssues.first { selectedID = issue.trackID }
+                    }.font(.caption)
+                }.accessibilityIdentifier("transcription-rhythm-issues")
+            }
             DisclosureGroup("1. Match the source lines to your singers", isExpanded: $mappingExpanded) {
                 ScrollView {
                     VStack(spacing: 7) {
@@ -48,13 +57,19 @@ struct ChoirReviewView: View {
             HStack(spacing: 14) {
                 if showSource, let originalPDF { SourcePDFView(data: originalPDF).frame(width: 380) }
                 if let index = draft.tracks.firstIndex(where: { $0.id == selectedID }) {
-                    ImportedLineEditor(track: $draft.tracks[index], totalTicks: draft.expectedTicks, quarter: draft.tune.quarter, audition: model.player.audition)
+                    ImportedLineEditor(track: $draft.tracks[index], totalTicks: draft.expectedTicks, tune: draft.tune, audition: model.player.audition)
                         .id(selectedID)
                 }
             }.frame(maxHeight: .infinity)
             if !validationError.isEmpty {
                 Label(validationError, systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(.red)
                     .fixedSize(horizontal: false, vertical: true)
+            }
+            HStack {
+                Text("Transcription reports include notes and lyrics, but not the source PDF or API key.")
+                    .font(.caption2).foregroundStyle(.secondary)
+                Spacer()
+                Button("Export transcription report…") { model.exportTranscriptionReport(draft) }.font(.caption)
             }
             DisclosureGroup("Recognition notes and playback limits (\(draft.warnings.count))") {
                 ScrollView { Text(draft.warnings.joined(separator: "\n\n")).font(.caption).frame(maxWidth: .infinity, alignment: .leading).textSelection(.enabled) }.frame(maxHeight: 120)
@@ -73,7 +88,10 @@ struct ChoirReviewView: View {
                 .accessibilityIdentifier("choir-review-finish")
             }
         }.padding(24).frame(width: 1080, height: 760)
-        .onAppear { validate() }
+        .onAppear {
+            validate()
+            if let first = draft.rhythmIssues.first { mappingExpanded = false; selectedID = first.trackID }
+        }
         .onChange(of: draft.tracks) { _, _ in invalidate() }
         .onChange(of: draft.tune) { _, _ in invalidate() }
         .onChange(of: selectedID) { _, _ in model.player.stop() }
@@ -143,7 +161,8 @@ private struct ChoirMappingRow: View {
 private struct ImportedLineEditor: View {
     @Binding var track: ChoirImportTrack
     let totalTicks: Int
-    let quarter: Int
+    let tune: Tune
+    private var quarter: Int { tune.quarter }
     let audition: (Int) -> Void
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -155,12 +174,18 @@ private struct ImportedLineEditor: View {
                 Button("Add rest") { track.notes.append(Note(pitch: nil, ticks: quarter)) }
             }.font(.caption)
             Text("Duration menus show written note values and preserve tuplet ratios. Syllable edits below affect verse 1; other imported verses are preserved. Any edit resets the review check marks.").font(.caption2).foregroundStyle(.secondary)
+            TranscriptionRhythmControls(track: $track, tune: tune)
+            let problems = TranscriptionRhythmReview.issues(track: track, tune: tune)
             ScrollView {
                 LazyVStack(spacing: 4) {
                     ForEach($track.notes) { $note in
                         MelodyNoteRow(note: $note, quarter: quarter, position: (track.notes.firstIndex { $0.id == note.id } ?? 0) + 1,
                             onPlay: { if let pitch = note.pitch { audition(pitch) } },
                             onDelete: { track.notes.removeAll { $0.id == note.id } })
+                        if let issue = problems.first(where: { $0.noteID == note.id }) {
+                            Text(issue.description).font(.caption2).foregroundStyle(.orange)
+                                .frame(maxWidth: .infinity, alignment: .leading).textSelection(.enabled)
+                        }
                     }
                 }
             }

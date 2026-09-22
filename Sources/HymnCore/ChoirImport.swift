@@ -11,7 +11,7 @@ public struct RehearsalInfo: Codable, Equatable, Sendable {
     }
 }
 
-public struct ChoirImportTrack: Equatable, Identifiable, Sendable {
+public struct ChoirImportTrack: Codable, Equatable, Identifiable, Sendable {
     public var id: String
     public var label: String
     public var voice: Voice
@@ -30,11 +30,14 @@ public struct ChoirImportDraft: Equatable, Sendable {
     public var sourceFormat: String
     public var warnings: [String]
     public var expectedTicks: Int
+    /// Kept only with a pending review, for an explicitly exported diagnostic report.
+    public var originalRecognition: ChoirPDFExtraction?
     public init(tune: Tune, tracks: [ChoirImportTrack], sourceFormat: String, warnings: [String], expectedTicks: Int) {
         self.tune = tune; self.tracks = tracks; self.sourceFormat = sourceFormat
         self.warnings = warnings; self.expectedTicks = expectedTicks
     }
     public func score(profile: ChoirProfile, reviewed: Bool = false) throws -> Score {
+        if let issue = rhythmIssues.first { throw HymnError.invalid(issue.description) }
         let selected = tracks.filter(\.included), voices = Set(selected.map(\.voice))
         guard selected.count == voices.count, voices == Set(Voicing.sab.voices) || voices == Set(Voicing.satb.voices) else {
             throw HymnError.invalid("Assign each selected line once: Soprano, Alto and Bass, with an optional Tenor. Exclude accompaniment lines.")
@@ -68,15 +71,15 @@ public struct ChoirImportDraft: Equatable, Sendable {
 }
 
 /// Explicit recognition result. An unsupported/incomplete result is never installed.
-public struct ChoirPDFExtraction: Codable, Sendable {
-    public enum Status: String, Codable, Sendable { case complete, unsupported, unreadable }
-    public struct Event: Codable, Sendable {
+public struct ChoirPDFExtraction: Codable, Equatable, Sendable {
+    public enum Status: String, Codable, Sendable, Equatable { case complete, unsupported, unreadable }
+    public struct Event: Codable, Equatable, Sendable {
         public var pitch: Int?
         public var ticks: Int
         public var lyrics: [Lyric]
         public var rhythm: [WrittenRhythm]?
     }
-    public struct Track: Codable, Sendable {
+    public struct Track: Codable, Equatable, Sendable {
         public var label: String
         public var voice: Voice
         public var notes: [Event]
@@ -124,41 +127,66 @@ public struct ChoirPDFExtraction: Codable, Sendable {
                 note.rhythm = event.rhythm?.isEmpty == false ? event.rhythm : nil
                 return note
             }
+            guard part.dynamics.count <= 1024, part.dynamics.allSatisfy({ $0.tick >= 0 && $0.tick <= quarter * 600 }) else {
+                throw HymnError.invalid("Invalid or excessive dynamic positions in \(part.label).")
+            }
             let track = ChoirImportTrack(id: "track\(index)", label: part.label, voice: part.voice, notes: notes, dynamics: part.dynamics)
             var actual = 0
             for note in track.notes {
                 guard note.ticks > 0, note.ticks <= quarter * 600 - actual else { throw HymnError.invalid("Invalid or excessive recognized duration in \(part.label).") }
                 actual += note.ticks
             }
-            try RehearsalValidation.validateNotes(track.notes, total: actual, name: part.label, quarter: quarter)
+            _ = try RehearsalValidation.validateNotesForReview(track.notes, name: part.label, quarter: quarter)
             if actual != expected { timingWarnings.append("\(part.label) has a duration mismatch; correct its notes/rests before finishing review.") }
             tracks.append(track)
         }
         t.melody = tracks.first { $0.voice == .soprano }?.notes ?? tracks[0].notes
-        try t.validated()
-        return .init(tune: t, tracks: tracks, sourceFormat: "PDF transcription", warnings:
+        try t.validateMetadata()
+        // Musical rhythm checks happen IN review, then again at the playback/save gate.
+        // Never drop a safely bounded transcription merely because its notation is incomplete.
+        var draft = ChoirImportDraft(tune: t, tracks: tracks, sourceFormat: "PDF transcription", warnings:
             ["Experimental recognition: compare every voice with the original PDF. A complete response is not a guarantee of accuracy.",
              "Piano accompaniment is not transcribed or synthesized. Practice playback uses the selected vocal parts."] + warnings + timingWarnings,
             expectedTicks: expected)
+        draft.originalRecognition = self
+        return draft
     }
 }
 
 public enum RehearsalValidation {
-    public static func validateNotes(_ notes: [Note], total: Int, name: String, quarter: Int = 480) throws {
-        guard (1...4096).contains(notes.count), Set(notes.map(\.id)).count == notes.count else { throw HymnError.invalid("\(name) has missing or duplicate note events.") }
-        try Rhythm.validateLine(notes, quarter: quarter)
-        var ticks = 0
+    /// Bounds and metadata only. A review draft is NOT a playable/savable Score.
+    /// Validate before reductions, rendering labels, or any rhythmic arithmetic.
+    @discardableResult public static func validateNotesForReview(_ notes: [Note], name: String, quarter: Int = 480) throws -> Int {
+        guard Rhythm.resolutions.contains(quarter), (1...4096).contains(notes.count),
+              Set(notes.map(\.id)).count == notes.count else { throw HymnError.invalid("\(name) has missing or duplicate note events, or an invalid timing resolution.") }
+        var total = 0
         for note in notes {
-            guard note.ticks > 0, note.ticks <= quarter * 600,
+            guard note.ticks > 0, note.ticks <= quarter * 600 - total,
                   note.id.count <= 100, note.id.range(of: "^[A-Za-z_][A-Za-z0-9_.-]*$", options: .regularExpression) != nil,
                   note.sourceID == nil, note.pitch == nil || (0...127).contains(note.pitch!),
                   note.lyrics.count <= 8, Set(note.lyrics.map(\.verse)).count == note.lyrics.count,
                   note.lyrics.allSatisfy({ (1...8).contains($0.verse) && $0.text.count <= 100 }),
-                  note.pitch != nil || note.lyrics.isEmpty else { throw HymnError.invalid("\(name) has an invalid note, rest, lyric or duration.") }
-            guard note.ticks <= total - ticks else { throw HymnError.invalid("\(name) extends beyond the source duration. Correct its notes or rests.") }
-            ticks += note.ticks
+                  note.pitch != nil || note.lyrics.isEmpty,
+                  (note.rhythm?.count ?? 0) <= 256,
+                  note.rhythm?.allSatisfy({ $0.group.count <= 80 }) != false else {
+                throw HymnError.invalid("\(name) has an invalid note, rest, lyric or excessive duration. No playback or import was allowed.")
+            }
+            total += note.ticks
         }
-        guard ticks == total else { throw HymnError.invalid("\(name) is missing \(Double(total - ticks) / Double(quarter)) quarter beats. Add the missing notes or explicit rests; no padding is guessed for PDF recognition.") }
+        return total
+    }
+    public static func validateNotes(_ notes: [Note], total: Int, name: String, quarter: Int = 480) throws {
+        let actual = try validateNotesForReview(notes, name: name, quarter: quarter)
+        guard total >= 0, total <= quarter * 600 else { throw HymnError.invalid("Invalid source duration.") }
+        for (i, note) in notes.enumerated() {
+            do { try Rhythm.validateNote(note, quarter: quarter) }
+            catch { throw HymnError.invalid("\(name), note/rest \(i + 1): " + error.localizedDescription) }
+        }
+        do { try Rhythm.validateLine(notes, quarter: quarter) }
+        catch { throw HymnError.invalid("\(name): " + error.localizedDescription) }
+        guard actual == total else {
+            throw HymnError.invalid("\(name) totals \(Double(actual) / Double(quarter)) quarter beats; the source requires \(Double(total) / Double(quarter)). Correct the notes/rests; nothing was padded or truncated.")
+        }
     }
     public static func validate(_ score: Score) throws {
         try score.tune.validated(); try score.profile.validated()

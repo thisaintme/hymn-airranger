@@ -1,5 +1,14 @@
 ## Alpha 7: tuplets and finer rhythms
 
+## Alpha 8: incomplete tuplet transcription recovery
+
+An existing-arrangement PDF with missing tuplet labels can now enter review without
+changing its note timings. Located issues, source-confirmed grouping controls and
+**Export transcription report…** replace the former dead end. Invalid scores remain
+blocked from playback and completion. Both PDF schemas require written rhythms.
+See [Alpha 8 notes](Docs/Alpha%208%20fixes.md) for exact scope and session-only limits.
+
+
 PDF and MusicXML import now support single-level 2:3, 3:2, 4:3, 5:4, 6:4,
 7:4 and 9:8 tuplets, including rests and tied portions, plus thirty-second and
 sixty-fourth notes, dotted sixteenths and double-dotted values. Exact timing and

@@ -103,13 +103,17 @@ public struct Tune: Codable, Equatable, Sendable {
         var tick = 0
         return melody.map { note in defer { tick += note.ticks }; return tick }
     }
-    public func validated() throws {
+    /// Metadata must be safe before even an unplayable transcription is reviewed.
+    public func validateMetadata() throws {
         guard title.count <= 256, credit.count <= 512, rightsNote.count <= 4000, sourceURL.count <= 2048, lyricText.count <= 20000 else { throw HymnError.invalid("Some score metadata is unexpectedly long.") }
         guard Rhythm.resolutions.contains(quarter) else { throw HymnError.invalid("Unsupported timing resolution.") }
         guard (1...12).contains(beats), [2,4,8,16].contains(beatUnit), (30...180).contains(tempo), (-6...6).contains(fifths) else {
             throw HymnError.invalid("Use a supported meter, a tempo from 30–180, and at most six sharps or flats.")
         }
         guard pickupTicks >= 0, pickupTicks < barTicks, pickupTicks % Rhythm.quantum(quarter) == 0 else { throw HymnError.invalid("The pickup must be shorter than a bar and use supported rhythmic units.") }
+    }
+    public func validated() throws {
+        try validateMetadata()
         guard !melody.isEmpty, melody.count <= 512 else { throw HymnError.invalid("A tune must contain 1–512 notes or rests.") }
         guard Set(melody.map(\.id)).count == melody.count else { throw HymnError.invalid("The score contains duplicate note identifiers.") }
         for note in melody {

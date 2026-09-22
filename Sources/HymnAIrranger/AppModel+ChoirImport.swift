@@ -143,6 +143,17 @@ extension AppModel {
             return true
         } catch { errorMessage = error.localizedDescription; return false }
     }
+    func exportTranscriptionReport(_ draft: ChoirImportDraft) {
+        guard !busy else { return }
+        let panel = NSSavePanel(); panel.allowedContentTypes = [.json]
+        panel.nameFieldStringValue = safeFilename(draft.tune.title) + " - transcription-report.json"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "development"
+            try draft.transcriptionReport(appVersion: version).write(to: url, options: .atomic)
+            status = "Transcription report saved. Review its notes, lyrics and warnings before sharing."
+        } catch { errorMessage = error.localizedDescription }
+    }
     func saveOriginalChoirPDF() {
         guard let source = originalChoirPDF, !busy else { return }
         let panel = NSSavePanel(); panel.allowedContentTypes = [.pdf]
