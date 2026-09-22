@@ -1,0 +1,21 @@
+name: Transcription review source snapshot
+on:
+  push:
+    branches: [fix/tuplet-transcription-review]
+    paths: [.github/workflows/tuplet-review-source.yml]
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          ref: f1347d77f5d385065bd3635621a2a68b276aa2cb
+      - run: git archive --format=zip --output=source.zip HEAD
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: transcription-review-source
+          path: source.zip
+          retention-days: 1
