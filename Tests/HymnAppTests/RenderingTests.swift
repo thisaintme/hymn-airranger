@@ -79,7 +79,8 @@ final class RenderingTests: XCTestCase {
     @MainActor func testImportedArrangementEngravesAndExportsWithoutArranging() async throws {
         _ = NSApplication.shared
         let source = try score()
-        let imported = try ChoirMusicXML.read(Data(Notation.musicXML(source).utf8)).score(profile: source.profile, reviewed: true)
+        var imported = try ChoirMusicXML.read(Data(Notation.musicXML(source).utf8)).score(profile: source.profile, reviewed: true)
+        imported.tune.fifths = 1 // Exercise a visible key signature while preserving every concert pitch.
         XCTAssertTrue(imported.isImportedArrangement)
         let controller = ScoreController(), configuration = WKWebViewConfiguration()
         configuration.userContentController.add(controller, name: "hymn")
@@ -95,6 +96,10 @@ final class RenderingTests: XCTestCase {
         }
         XCTAssertTrue(controller.error.isEmpty, controller.error)
         XCTAssertGreaterThan(controller.pageCount, 0)
+        let labels = try await web.evaluateJavaScript("document.getElementById('pages').textContent") as? String ?? ""
+        for voice in imported.profile.voicing.voices { XCTAssertTrue(labels.contains(voice.name), "Missing printed voice name: \(voice.name)") }
+        let keySigns = try await web.evaluateJavaScript("document.querySelectorAll('.keySig use').length") as? Int ?? 0
+        XCTAssertGreaterThan(keySigns, 0, "The imported key signature must be visible")
         let pdf = try await controller.exportPDF()
         XCTAssertGreaterThan(try XCTUnwrap(PDFDocument(data: pdf)).pageCount, 0)
         try pdf.write(to: try evidenceFolder().appendingPathComponent("Imported-arrangement.pdf"))
