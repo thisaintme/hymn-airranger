@@ -17,6 +17,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          cp .development/smoosic-ui-followup.py "$RUNNER_TEMP/smoosic-ui-followup.py"
           python3 - <<'PY'
           import base64, hashlib, lzma, os
           from pathlib import Path
@@ -27,6 +28,8 @@ jobs:
           PY
           git checkout --detach 0c6713fd2045a322b8950d71e27da5a1290f9822
           git apply --index "$RUNNER_TEMP/smoosic.patch"
+          python3 "$RUNNER_TEMP/smoosic-ui-followup.py"
+          git add Sources
           git diff --cached --check
           test -z "$(git diff --cached --name-only -- .development .github/workflows)"
       - name: Prepare pinned local resources
