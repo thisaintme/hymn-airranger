@@ -1,0 +1,60 @@
+name: Verify Smoosic editor proof of concept
+on:
+  push:
+    branches: [poc/smoosic-editor]
+    paths: [.github/workflows/verify-smoosic.yml]
+permissions:
+  contents: write
+jobs:
+  verify:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+      - name: Apply checksum-verified implementation on the reviewed base
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64, hashlib, lzma, os
+          from pathlib import Path
+          encoded = ''.join(Path('.development/smoosic-part-%d.b64' % i).read_text().strip() for i in range(2))
+          patch = lzma.decompress(base64.b64decode(encoded, validate=True), memlimit=268435456)
+          assert hashlib.sha256(patch).hexdigest() == 'fc14176df049716ac294d444fb5ea57d8d1f25e6315a67cb7755d734ef53dee4'
+          Path(os.environ['RUNNER_TEMP'], 'smoosic.patch').write_bytes(patch)
+          PY
+          git checkout --detach 0c6713fd2045a322b8950d71e27da5a1290f9822
+          git apply --index "$RUNNER_TEMP/smoosic.patch"
+          git diff --cached --check
+          test -z "$(git diff --cached --name-only -- .development .github/workflows)"
+      - name: Prepare pinned local resources
+        run: bash Scripts/prepare-resources.sh
+      - name: Test core, graphical editing, persistence and offline WebKit integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          swift test 2>&1 | tee "$RUNNER_TEMP/smoosic-tests.log"
+      - name: Upload editor screenshots and diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: smoosic-editor-evidence
+          path: |
+            .build/SmokeArtifacts/
+            ${{ runner.temp }}/smoosic-tests.log
+          include-hidden-files: true
+          retention-days: 7
+      - name: Build the native release app
+        run: swift build -c release --product HymnAIrranger
+      - name: Verify packaging and resources after ZIP extraction
+        run: bash Scripts/package-app.sh
+      - name: Save passing source on an isolated branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --cached --check
+          git -c user.name='Hymn AIrranger development' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'Add isolated local Smoosic graphical score editor proof of concept'
+          git push origin HEAD:refs/heads/work/smoosic-poc-tested
+          echo "Verified source: $(git rev-parse HEAD). Main is unchanged." >> "$GITHUB_STEP_SUMMARY"
