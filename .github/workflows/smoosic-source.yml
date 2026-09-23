@@ -25,7 +25,7 @@ jobs:
         run: |
           mkdir snapshot
           git -C app archive --format=zip HEAD > snapshot/app.zip
-          git -C upstream archive --format=zip HEAD src release build styles package.json LICENSE.md README.md > snapshot/smoosic.zip
+          git -C upstream archive --format=zip HEAD src release build package.json package-lock.json LICENSE LICENSE.md README.md > snapshot/smoosic.zip
           curl --fail --location --retry 2 https://code.jquery.com/jquery-3.7.1.min.js -o snapshot/jquery-3.7.1.min.js
           sha256sum snapshot/* > snapshot/SHA256SUMS
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
