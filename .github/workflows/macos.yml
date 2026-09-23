@@ -97,11 +97,13 @@ jobs:
           fi
           cat > release-notes.md <<EOF
           ## What's changed
-          Fixed the existing-arrangement PDF import dead end when a note has no tuplet ratio/group. Safely bounded transcriptions now reach review with voice/bar/note diagnostics; invalid scores remain blocked from playback and completion.
+          Added an isolated **Smoosic score editor proof of concept**. Open **Score editor (PoC)…** from the main window or File menu, then choose **Test study**, **Copy current song**, or a local MusicXML file. No editor account, network connection or AI key is required.
 
-          **Check suggestion…** proposes only complete exact groupings and requires source confirmation. **Set tuplet group…** repairs a selected complete group without changing pitches, durations, rests or lyrics. Incompatible or incomplete groups are not rounded or padded.
+          Click notes and use the labelled pitch/rhythm controls, Undo and per-verse syllable field. **Save editor copy…** preserves the full editing document as a separate .hymneditor file, which can be reopened through the editor. Local autosave/recovery is separate from existing hymn projects. Rapid toolbar edits are serialized; saving waits for edits to settle.
 
-          **Export transcription report…** includes the original decoded response, working corrections and located errors, but excludes source attachments and the API key. It contains lyrics and recognized notes: review before sharing. Both PDF schemas now require nonempty written rhythms. No automatic paid retry was added. See Docs/Alpha 8 fixes.md for scope, session-only recovery and limitations. Existing saved project formats and key storage are unchanged.
+          **This is an evaluation, not a completed production editor.** The editing copy does not overwrite your rehearsal project. Rehearsal transfer, PDF/MP3 export, main Versions integration and Redo are not connected. Score layout and advanced notation still need refinement. Smoosic MusicXML exports can omit per-part divisions and contain fractional tuplet durations; the import check and diagnostic report flag these known interchange problems rather than silently rounding them. Save the native editor draft instead of relying on XML alone. Pending invalid PDF transcriptions are not yet connected to this editor.
+
+          Existing .hymn projects, project formats and API-key storage are unchanged. See Docs/Smoosic PoC.md for the scope, pinned dependencies, source adapters and known limitations.
 
           ## Download and test
           Download **Hymn-AIrranger-macOS-arm64.zip** below, extract it, and move **Hymn AIrranger.app** to Applications.
@@ -109,7 +111,7 @@ jobs:
 
           **Development alpha: ad-hoc signed, NOT Apple-notarized.** Read INSTALL.md before opening. Do not disable Gatekeeper globally. Back up important projects before alpha testing.
 
-          The macOS build, core/app regression tests and native integration checks passed before publication. New tests exercise incomplete tuplet review, exact explicit repairs, strict playback/save validation, source response preservation, reports and same-sheet UI recovery. Existing notation/PDF/MP3, tuplet and import-handoff tests remain enabled. Recognition responses are simulated: no paid requests or tests against the user's PDF were made.
+          The macOS build and all enabled core/app tests must pass before publication. New native WKWebView tests exercise actual bundled Smoosic editing, Undo, two lyric verses, tuplets, editor-document save/reopen, autosave recovery, blocked network access, failed-import preservation and visible interchange findings. They intentionally verify that an unsafe MusicXML round trip is rejected by the strict rehearsal importer. These tests do not establish all-score fidelity or production readiness. No paid AI requests or private repertoire were used.
 
           Source commit: $GITHUB_SHA
           Build: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID
