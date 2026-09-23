@@ -1,0 +1,35 @@
+:root {--button-border-color:#d1dbd6;--button-shadow-color:transparent}
+body {font-family:-apple-system,BlinkMacSystemFont,"Arial",sans-serif;color:#172a29;background:#edf1ef}
+#editor-status{font-size:12px;padding:7px 14px;background:#e8f0ec;border-bottom:1px solid #d1dcd5;min-height:30px}
+#tools,#lyrics-tools{display:flex;gap:7px;align-items:center;flex-wrap:wrap;padding:8px 14px;background:#fafcfb;border-bottom:1px solid #dce3df;font-size:12px}
+#tools button,#lyrics-tools button {background:white;border:1px solid #c7d4cc;border-radius:6px;padding:5px 10px;min-height:28px;color:#203e33}
+#tools button:hover,#lyrics-tools button:hover{background:#e2ede7} #tools button:focus-visible{outline:2px solid #326b56}
+#selection-info{margin-left:auto;font-size:12px} #lyrics-tools span{margin-left:auto;color:#52635a;font-size:11px}
+#lyric-text{width:180px;border:1px solid #c7d4cc;border-radius:4px;padding:5px} #lyric-verse{border:1px solid #c7d4cc;padding:4px;border-radius:4px} .sep{width:6px}
+[class*="icon-"]::before {content:"" !important} .titleText{display:none!important} .musicRelief{background:#e2e8e4!important}
+#controls-left{min-width:122px;padding:10px!important;box-shadow:none!important;background:#f5f8f6!important}
+#controls-top{width:auto;flex:1;display:flex} .workspace .navbar-expand{margin-left:0!important;background:#f5f8f6!important;padding:5px 10px}
+#controls-top button{font:12px -apple-system,sans-serif;padding:4px 10px;min-width:64px;min-height:28px;height:auto!important;white-space:nowrap}
+button.menu-button{height:38px!important;min-height:38px!important;margin:0 0 4px;border:1px solid #cdd9d1!important;border-radius:6px!important;box-shadow:none!important;font-size:13px}
+button.menu-button .icon{display:none} button.menu-button .left-text{padding:0!important} .btn{border-radius:6px} .btn .icon:empty{display:none}
+.control-bar,.controls-top .ribbonButtonContainer{margin:0!important;background:transparent!important}.controls-top .row{gap:5px}
+.dom-container{background:#e2e8e4!important}.scrollContainer{height:calc(100vh - 182px)!important} svg text{font-family:Times,serif}
+#render-progress{pointer-events:none} .dialogContainer,.vueDialogContainer{font-size:14px}
+html,body{height:100%;margin:0;overflow:hidden}
+.workspace{height:calc(100vh - 127px);min-height:0;display:flex;flex-direction:column}
+.workspace > .media{flex:1;min-height:0}
+#controls-left{flex-grow:0!important;justify-content:flex-start!important}
+#controls-left button.menu-button{flex:0 0 36px!important;height:36px!important;min-height:36px!important;padding:6px 10px!important}
+#controls-left .right-text{display:none!important}
+#controls-top{width:100%!important;max-width:none!important}
+#controls-top .row{flex-wrap:nowrap!important;margin:0!important}
+#controls-top .text-span{display:inline!important;font-size:12px!important}
+#controls-top .left-text,#controls-top .right-text{font-size:12px!important;line-height:20px!important;padding:0!important}
+#controls-top .menu-icon{display:none!important}
+#controls-top button{height:30px!important;padding:4px 10px!important;width:auto!important;flex:0 0 auto!important}
+.scrollContainer{height:100%!important;overflow:auto!important;min-height:0}
+
+/* Bootstrap's flex-md-fill otherwise gives the ribbon half the window height. */
+#smoo-top-bar{flex:0 0 44px!important;max-height:44px!important;min-height:44px;align-items:center;flex-wrap:nowrap;margin:0!important}
+#media{flex:1 1 0!important;min-height:0;overflow:hidden}
+#controls-left{height:100%!important;max-height:100%;overflow-y:auto}

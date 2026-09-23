@@ -1,3 +1,16 @@
+## Experimental graphical editor (alpha 9)
+
+Open **Score editor (PoC)…** in the main window or File menu to try a local,
+embedded Smoosic editor. Use **Test study**, **Copy current song**, or open
+MusicXML. Save/reopen full editing copies as **.hymneditor**, separately from
+.hymn rehearsal projects. There is no automatic replacement of your score.
+
+The prototype verifies manual editing, Undo, two lyric verses, tuplets and native
+save/recovery. Its **MusicXML export has known interchange issues** (including
+missing timing divisions and fractional durations). Practice/PDF/MP3 and main
+version history are not yet connected to editor changes. Read
+[the PoC notes](Docs/Smoosic%20PoC.md) before relying on exports.
+
 ## Alpha 7: tuplets and finer rhythms
 
 ## Alpha 8: incomplete tuplet transcription recovery

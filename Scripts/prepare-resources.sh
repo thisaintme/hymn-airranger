@@ -25,3 +25,5 @@ else
   (cd "$DEST" && /usr/bin/shasum -a 256 verovio-toolkit-wasm.js lame.all.js > SHA256SUMS)
 fi
 echo "Local engraving and MP3 resources are ready."
+
+python3 "$ROOT/Scripts/prepare-editor.py"

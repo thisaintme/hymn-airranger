@@ -33,7 +33,9 @@ enum AppResources {
         let prefix = root.resolvingSymlinksInPath().path + "/"
         let required = [("index", "html", "Web"), ("score", "js", "Web"),
                         ("verovio-toolkit-wasm", "js", "Web/Vendor"),
-                        ("lame.all", "js", "Web/Vendor")]
+                        ("lame.all", "js", "Web/Vendor"),
+                        ("index", "html", "Editor"), ("editor", "js", "Editor"),
+                        ("smoosic", "js", "Editor/Vendor"), ("jquery", "js", "Editor/Vendor")]
         for (name, ext, directory) in required {
             guard let url = resources.url(forResource: name, withExtension: ext, subdirectory: directory),
                   url.resolvingSymlinksInPath().path.hasPrefix(prefix),

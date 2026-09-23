@@ -1,0 +1,50 @@
+{
+  "smoosic.js": {
+    "url": "https://raw.githubusercontent.com/Smoosic/Smoosic/1427042ef0d6b9d8684b140c8f2a489270e8cc9f/release/smoosic.js",
+    "sha256": "355bad50e043ac81a76acc19a5666b7412e59c2003d0d03148c62a6d97fa3169"
+  },
+  "styles/bootstrap.css": {
+    "url": "https://raw.githubusercontent.com/Smoosic/Smoosic/1427042ef0d6b9d8684b140c8f2a489270e8cc9f/release/styles/bootstrap.css",
+    "sha256": "194e29ea30df6a10ca73ccc2f5d8adec87b3198c0240bb4eff7083bb0a19bb56"
+  },
+  "styles/media.css": {
+    "url": "https://raw.githubusercontent.com/Smoosic/Smoosic/1427042ef0d6b9d8684b140c8f2a489270e8cc9f/release/styles/media.css",
+    "sha256": "2008e7caf736537eb480ccf62cdd923a66201ec6115295071b82f26789678bf9"
+  },
+  "styles/ribbon.css": {
+    "url": "https://raw.githubusercontent.com/Smoosic/Smoosic/1427042ef0d6b9d8684b140c8f2a489270e8cc9f/release/styles/ribbon.css",
+    "sha256": "ab24266a4ee5e7d8efef19466dd688207872e864cb6ad61c446418aca1432f48"
+  },
+  "styles/dialogs.css": {
+    "url": "https://raw.githubusercontent.com/Smoosic/Smoosic/1427042ef0d6b9d8684b140c8f2a489270e8cc9f/release/styles/dialogs.css",
+    "sha256": "faba2de6dd95404a404f1e1ab455db192dab2dbed7285144678601058d9fea27"
+  },
+  "styles/menus.css": {
+    "url": "https://raw.githubusercontent.com/Smoosic/Smoosic/1427042ef0d6b9d8684b140c8f2a489270e8cc9f/release/styles/menus.css",
+    "sha256": "915c84ea45226e200ba131b42801027c0849da505ec805f5c47c695fa1d4832b"
+  },
+  "styles/piano.css": {
+    "url": "https://raw.githubusercontent.com/Smoosic/Smoosic/1427042ef0d6b9d8684b140c8f2a489270e8cc9f/release/styles/piano.css",
+    "sha256": "adb90dc749175a2fd6c9f1b48c7c58bebdecb75ec213f46bcea12584d83184b5"
+  },
+  "styles/general.css": {
+    "url": "https://raw.githubusercontent.com/Smoosic/Smoosic/1427042ef0d6b9d8684b140c8f2a489270e8cc9f/release/styles/general.css",
+    "sha256": "213cbf15fa56ecde434e76ab076b5e4b63a0b00b2aa284267a70086cc611f80b"
+  },
+  "styles/tree.css": {
+    "url": "https://raw.githubusercontent.com/Smoosic/Smoosic/1427042ef0d6b9d8684b140c8f2a489270e8cc9f/release/styles/tree.css",
+    "sha256": "5086a2f512395f1bb6b06597e966764faf39c8a75e63f8f6882a6db98b110f21"
+  },
+  "jquery.js": {
+    "url": "https://code.jquery.com/jquery-3.7.1.min.js",
+    "sha256": "fc9a93dd241f6b045cbff0481cf4e1901becd0e12fb45166a8f17f95823f0b1a"
+  },
+  "Smoosic-LICENSE.txt": {
+    "url": "https://raw.githubusercontent.com/Smoosic/Smoosic/1427042ef0d6b9d8684b140c8f2a489270e8cc9f/LICENSE",
+    "sha256": "6f86d16ee65e6da430fa22bd1609b89056492ffe6fb5e7a1d17ddd9f5863b997"
+  },
+  "Smoosic-LICENSE.md.txt": {
+    "url": "https://raw.githubusercontent.com/Smoosic/Smoosic/1427042ef0d6b9d8684b140c8f2a489270e8cc9f/LICENSE.md",
+    "sha256": "e2a54cc0d317b38cf556c34501306cd7feae46179cc07403f623d4579ffc24df"
+  }
+}

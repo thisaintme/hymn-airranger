@@ -84,6 +84,7 @@ struct WorkspaceView: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
             Spacer(minLength:0)
+            OpenScoreEditorButton().font(.caption)
             Picker("Workspace",selection:$model.workspace) { ForEach(Workspace.allCases) { Text($0.rawValue).tag($0) } }.pickerStyle(.segmented).frame(width:234).disabled(model.busy)
             Button { model.inspectorVisible.toggle() } label: { Image(systemName:"sidebar.right") }.buttonStyle(.borderless).help("Show assistant and versions")
         }.padding(.horizontal,25).padding(.vertical,20)

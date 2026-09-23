@@ -5,3 +5,5 @@ Build/
 Sources/HymnAIrranger/Resources/Web/Vendor/
 *.partial
 .env
+
+Sources/HymnAIrranger/Resources/Editor/Vendor/

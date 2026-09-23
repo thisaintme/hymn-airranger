@@ -11,7 +11,7 @@ var products: [Product] = [
     .executable(name: "hymn-cli", targets: ["HymnCLI"])
 ]
 #if os(macOS)
-targets.append(.executableTarget(name: "HymnAIrranger", dependencies: ["HymnCore"], resources: [.copy("Resources/Web")]))
+targets.append(.executableTarget(name: "HymnAIrranger", dependencies: ["HymnCore"], resources: [.copy("Resources/Web"), .copy("Resources/Editor")]))
 products.append(.executable(name: "HymnAIrranger", targets: ["HymnAIrranger"]))
 targets.append(.testTarget(name: "HymnAppTests", dependencies: ["HymnAIrranger", "HymnCore"]))
 #endif

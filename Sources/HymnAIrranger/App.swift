@@ -21,9 +21,12 @@ struct HymnAIrrangerApp: App {
                 Button("Import a song…") { model.sheet = .importSong }.keyboardShortcut("n").disabled(model.busy)
                 Button("Open project…") { model.openPanel() }.keyboardShortcut("o").disabled(model.busy)
                 Button("Save project copy…") { model.saveCopy() }.keyboardShortcut("s",modifiers:[.command,.shift])
+                OpenScoreEditorButton()
             }
             CommandGroup(after:.saveItem) { Button("Export rehearsal pack…") { model.exportPack() }.disabled(model.busy) }
         }
+        Window("Score editor — Smoosic PoC", id: "smoosic-editor") { SmoosicEditorWindow(model: model) }
+            .defaultSize(width: 1400, height: 980)
         Settings { SettingsView(model:model).frame(width:570,height:510) }
     }
 }

@@ -47,6 +47,7 @@ for item in index.html score.js Vendor/verovio-toolkit-wasm.js Vendor/lame.all.j
   test -s "$WEB/$item" || { echo "Missing packaged resource: $item" >&2; exit 1; }
 done
 (cd "$WEB/Vendor" && /usr/bin/shasum -a 256 -c SHA256SUMS)
+(cd "$APP/Contents/Resources/$RESOURCE_NAME/Editor/Vendor" && /usr/bin/shasum -a 256 -c SHA256SUMS)
 # No standalone fonts, signing credentials, source recordings, or project archives.
 if find "$APP" -type f \( -iname '*.ttf' -o -iname '*.otf' -o -iname '*.woff' -o -iname '*.woff2' -o -iname '*.p12' -o -iname '*.pem' -o -iname '*.hymn' \) | grep -q .; then
   echo "Unexpected private material or standalone font in the app bundle." >&2
