@@ -1,0 +1,36 @@
+name: Smoosic PoC source snapshot
+on:
+  push:
+    branches: [poc/smoosic-editor]
+    paths: [.github/workflows/smoosic-source.yml]
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 0c6713fd2045a322b8950d71e27da5a1290f9822
+          path: app
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: Smoosic/Smoosic
+          ref: 1427042ef0d6b9d8684b140c8f2a489270e8cc9f
+          path: upstream
+          persist-credentials: false
+      - name: Archive sources and pinned browser dependencies
+        run: |
+          mkdir snapshot
+          git -C app archive --format=zip HEAD > snapshot/app.zip
+          git -C upstream archive --format=zip HEAD src release build styles package.json LICENSE.md README.md > snapshot/smoosic.zip
+          curl --fail --location --retry 2 https://code.jquery.com/jquery-3.7.1.min.js -o snapshot/jquery-3.7.1.min.js
+          sha256sum snapshot/* > snapshot/SHA256SUMS
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: smoosic-poc-sources
+          path: snapshot/
+          retention-days: 2
+          if-no-files-found: error
